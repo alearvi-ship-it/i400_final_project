@@ -347,29 +347,97 @@ on conflict (image_id) do nothing;
 -- ------------------------------------------------------------
 
 alter table Students enable row level security;
+alter table Judges enable row level security;
+alter table Coaches enable row level security;
+alter table Administrator enable row level security;
 alter table Debate enable row level security;
+alter table Tournament enable row level security;
+alter table Tournament_Round enable row level security;
+alter table S_Participation enable row level security;
+alter table J_Participation enable row level security;
+alter table C_Participation enable row level security;
+alter table Images enable row level security;
+
+-- Tables without policies below default to deny-all until explicit policies are added.
 
 drop policy if exists students_select_own on Students;
 create policy students_select_own
 on Students
 for select
 to authenticated
-using (auth.uid() = auth_user_id);
+using (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
 
 drop policy if exists students_insert_own on Students;
 create policy students_insert_own
 on Students
 for insert
 to authenticated
-with check (auth.uid() = auth_user_id);
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
 
 drop policy if exists students_update_own on Students;
 create policy students_update_own
 on Students
 for update
 to authenticated
-using (auth.uid() = auth_user_id)
-with check (auth.uid() = auth_user_id);
+using (
+  auth.uid() = auth_user_id
+  or (auth_user_id is null and lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email))
+)
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists tournament_select_authenticated on Tournament;
+create policy tournament_select_authenticated
+on Tournament
+for select
+to authenticated
+using (true);
+
+drop policy if exists tournament_round_select_authenticated on Tournament_Round;
+create policy tournament_round_select_authenticated
+on Tournament_Round
+for select
+to authenticated
+using (true);
+
+drop policy if exists s_participation_select_own on S_Participation;
+create policy s_participation_select_own
+on S_Participation
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from Students
+    where Students.student_id = S_Participation.student_id
+      and (
+        Students.auth_user_id = auth.uid()
+        or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(Students.email)
+      )
+  )
+);
+
+drop policy if exists j_participation_select_authenticated on J_Participation;
+create policy j_participation_select_authenticated
+on J_Participation
+for select
+to authenticated
+using (true);
+
+drop policy if exists c_participation_select_authenticated on C_Participation;
+create policy c_participation_select_authenticated
+on C_Participation
+for select
+to authenticated
+using (true);
 
 drop policy if exists debates_select_authenticated on Debate;
 create policy debates_select_authenticated

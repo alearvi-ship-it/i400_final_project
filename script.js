@@ -16,6 +16,14 @@ if (toggleButton) {
     });
 }
 
+const TABLES = {
+    students: "students",
+    debate: "debate",
+    tournament: "tournament",
+    tournamentRound: "tournament_round",
+    studentParticipation: "s_participation"
+};
+
 function getSupabaseClient() {
     const config = window.APP_CONFIG || {};
     const url = config.SUPABASE_URL;
@@ -34,6 +42,15 @@ function getSupabaseClient() {
 
 const supabaseClient = getSupabaseClient();
 
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 function setMessage(target, message, isError) {
     if (!target) {
         return;
@@ -41,6 +58,24 @@ function setMessage(target, message, isError) {
 
     target.textContent = message;
     target.style.color = isError ? "#a11" : "#165b33";
+}
+
+function updateText(selector, value) {
+    const element = document.querySelector(selector);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+function getInitials(fullName) {
+    const letters = String(fullName || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || "")
+        .join("");
+
+    return letters || "DH";
 }
 
 async function handleLoginForm() {
@@ -53,6 +88,12 @@ async function handleLoginForm() {
 
     if (!supabaseClient) {
         setMessage(messageEl, "Supabase is not configured yet. Update supabase-config.js placeholders.", true);
+        return;
+    }
+
+    const { data } = await supabaseClient.auth.getSession();
+    if (data?.session) {
+        window.location.href = "debates.html";
         return;
     }
 
@@ -101,6 +142,46 @@ async function requireAuthenticatedUser() {
     return { user: data.user, error: null };
 }
 
+async function getStudentProfile(user) {
+    if (!supabaseClient || !user) {
+        return null;
+    }
+
+    const selectedColumns = "student_id,auth_user_id,first_name,last_name,school,email,graduation_year,phone";
+
+    const byAuthUser = await supabaseClient
+        .from(TABLES.students)
+        .select(selectedColumns)
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+    if (byAuthUser.data) {
+        return byAuthUser.data;
+    }
+
+    if (!user.email) {
+        return null;
+    }
+
+    const byEmail = await supabaseClient
+        .from(TABLES.students)
+        .select(selectedColumns)
+        .eq("email", user.email)
+        .maybeSingle();
+
+    return byEmail.data || null;
+}
+
+function updateSettingsHeader(student) {
+    if (!student) {
+        return;
+    }
+
+    const fullName = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.email || "Student Profile";
+    updateText("[data-settings-name]", fullName);
+    updateText("[data-settings-copy]", `${student.school || "School not set"} • ${student.email || "No email on file"}`);
+}
+
 async function preloadSettingsForm() {
     const settingsForm = document.querySelector("[data-settings-form]");
     if (!settingsForm || !supabaseClient) {
@@ -114,20 +195,21 @@ async function preloadSettingsForm() {
 
     settingsForm.querySelector('input[name="email"]').value = user.email || settingsForm.querySelector('input[name="email"]').value;
 
-    const { data } = await supabaseClient
-        .from("Students")
-        .select("first_name,last_name,graduation_year")
-        .eq("email", user.email)
-        .maybeSingle();
+    const data = await getStudentProfile(user);
 
     if (!data) {
+        updateSettingsHeader({ email: user.email });
         return;
     }
 
     settingsForm.querySelector('input[name="full-name"]').value = [data.first_name, data.last_name].filter(Boolean).join(" ");
+    settingsForm.querySelector('input[name="school"]').value = data.school || "";
+    settingsForm.querySelector('input[name="phone"]').value = data.phone || "";
     if (data.graduation_year) {
         settingsForm.querySelector('input[name="grad-year"]').value = data.graduation_year;
     }
+
+    updateSettingsHeader(data);
 }
 
 async function handleSettingsForm() {
@@ -150,12 +232,21 @@ async function handleSettingsForm() {
 
         const fullName = settingsForm.querySelector('input[name="full-name"]')?.value || "";
         const email = settingsForm.querySelector('input[name="email"]')?.value?.trim() || "";
+        const school = settingsForm.querySelector('input[name="school"]')?.value?.trim() || null;
+        const phone = settingsForm.querySelector('input[name="phone"]')?.value?.trim() || null;
         const gradYearRaw = settingsForm.querySelector('input[name="grad-year"]')?.value || "";
         const gradYear = gradYearRaw ? Number(gradYearRaw) : null;
+        const newPassword = settingsForm.querySelector('input[name="new-password"]')?.value || "";
+        const confirmPassword = settingsForm.querySelector('input[name="confirm-password"]')?.value || "";
         const { firstName, lastName } = splitName(fullName);
 
         if (!email || !firstName) {
             setMessage(messageEl, "Full name and email are required.", true);
+            return;
+        }
+
+        if ((newPassword || confirmPassword) && newPassword !== confirmPassword) {
+            setMessage(messageEl, "New password and confirmation must match.", true);
             return;
         }
 
@@ -165,26 +256,54 @@ async function handleSettingsForm() {
             return;
         }
 
+        const existingProfile = await getStudentProfile(user);
+
         setMessage(messageEl, "Saving profile...", false);
 
         const payload = {
+            auth_user_id: user.id,
             first_name: firstName,
             last_name: lastName,
             email,
+            school,
+            phone,
             graduation_year: Number.isFinite(gradYear) ? gradYear : null,
-            auth_user_id: user.id
         };
 
-        const { error } = await supabaseClient
-            .from("Students")
-            .upsert(payload, { onConflict: "email" });
+        const profileMutation = existingProfile?.student_id
+            ? supabaseClient
+                .from(TABLES.students)
+                .update(payload)
+                .eq("student_id", existingProfile.student_id)
+            : supabaseClient
+                .from(TABLES.students)
+                .upsert(payload, { onConflict: "email" });
+
+        const { error } = await profileMutation;
 
         if (error) {
             setMessage(messageEl, error.message, true);
             return;
         }
 
+        if (email !== user.email) {
+            const emailUpdate = await supabaseClient.auth.updateUser({ email });
+            if (emailUpdate.error) {
+                setMessage(messageEl, `Profile saved, but email update failed: ${emailUpdate.error.message}`, true);
+                return;
+            }
+        }
+
+        if (newPassword) {
+            const passwordUpdate = await supabaseClient.auth.updateUser({ password: newPassword });
+            if (passwordUpdate.error) {
+                setMessage(messageEl, `Profile saved, but password update failed: ${passwordUpdate.error.message}`, true);
+                return;
+            }
+        }
+
         setMessage(messageEl, "Profile saved.", false);
+        updateSettingsHeader({ first_name: firstName, last_name: lastName, school, email });
     });
 }
 
@@ -197,25 +316,136 @@ function formatDateLabel(isoDate) {
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function createUpcomingCard(debate) {
+function formatTimeLabel(timeValue, scheduledStart) {
+    if (scheduledStart) {
+        return new Date(scheduledStart).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+
+    if (!timeValue) {
+        return "TBD";
+    }
+
+    const [hourText = "0", minuteText = "00"] = timeValue.split(":");
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+    const date = new Date();
+    date.setHours(hour, minute, 0, 0);
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function createEmptyState(message) {
+    const element = document.createElement("div");
+    element.className = "empty-state";
+    element.textContent = message;
+    return element;
+}
+
+function getWinnerFromRuling(ruling) {
+    const match = String(ruling || "").match(/Team\s+(\d+)/i);
+    return match ? Number(match[1]) : null;
+}
+
+function getBallotSummary(record) {
+    return (record.judging || []).reduce((summary, entry) => {
+        const winner = getWinnerFromRuling(entry.ruling);
+        if (!winner) {
+            return summary;
+        }
+
+        if (winner === record.teamNumber) {
+            summary.teamWins += 1;
+        } else {
+            summary.opponentWins += 1;
+        }
+
+        return summary;
+    }, { teamWins: 0, opponentWins: 0 });
+}
+
+function getResultLabel(record) {
+    const ballotSummary = getBallotSummary(record);
+    if (ballotSummary.teamWins > ballotSummary.opponentWins) {
+        return { label: "Win", className: "result-badge result-badge--win" };
+    }
+
+    if (ballotSummary.opponentWins > ballotSummary.teamWins) {
+        return { label: "Loss", className: "result-badge result-badge--loss" };
+    }
+
+    return { label: "Done", className: "result-badge result-badge--loss" };
+}
+
+function normalizeParticipationRecord(row) {
+    const debate = row.debate || {};
+    const tournament = debate.tournament || {};
+    const round = debate.tournament_round || {};
+
+    return {
+        participationId: row.s_participation_id,
+        teamNumber: row.team_number,
+        debateStance: row.debate_stance,
+        speakingOrder: row.speaking_order,
+        isCaptain: row.is_captain,
+        debateId: debate.debate_id,
+        debateDate: debate.debate_date,
+        debateTime: debate.debate_time,
+        topic: debate.topic,
+        room: debate.room,
+        status: debate.status,
+        teamAName: debate.team_a_name,
+        teamBName: debate.team_b_name,
+        tournamentName: tournament.name,
+        hostSchool: tournament.host_school,
+        location: tournament.location,
+        roundName: round.round_name,
+        roundNumber: round.round_number,
+        debateType: round.debate_type,
+        scheduledStart: round.scheduled_start,
+        judging: Array.isArray(debate.j_participation) ? debate.j_participation : [],
+        coaching: Array.isArray(debate.c_participation) ? debate.c_participation : []
+    };
+}
+
+function createUpcomingCard(record) {
     const article = document.createElement("article");
     article.className = "debate-card debate-card--upcoming";
 
-    const eventName = debate.topic || "Debate";
-    const status = debate.status || "Registered";
-    const when = formatDateLabel(debate.debate_date);
-    const location = debate.room || "Location TBD";
+    const eventName = record.debateType || "Debate";
+    const status = record.status || "Scheduled";
+    const when = formatDateLabel(record.debateDate);
+    const location = [record.hostSchool, record.location].filter(Boolean).join(" • ") || record.room || "Location TBD";
+    const roundLabel = record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD");
+    const coachNote = record.coaching[0]?.notes || "No coach note posted yet.";
 
     article.innerHTML = `
         <div class="debate-card-head">
             <div>
-                <span class="tag tag--event">${eventName}</span>
-                <span class="tag tag--upcoming">${status}</span>
+                <span class="tag tag--event">${escapeHtml(eventName)}</span>
+                <span class="tag tag--upcoming">${escapeHtml(status)}</span>
             </div>
-            <time class="debate-date">${when}</time>
+            <time class="debate-date">${escapeHtml(when)}</time>
         </div>
-        <h4 class="debate-title">${debate.team_a_name || "Team A"} vs ${debate.team_b_name || "Team B"}</h4>
-        <p class="debate-meta">${location}</p>
+        <h4 class="debate-title">${escapeHtml(record.tournamentName || `${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</h4>
+        <p class="debate-meta">${escapeHtml(location)}</p>
+        <div class="debate-details">
+            <div class="debate-detail">
+                <span class="detail-label">Matchup</span>
+                <span class="detail-value">${escapeHtml(`${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</span>
+            </div>
+            <div class="debate-detail">
+                <span class="detail-label">Round</span>
+                <span class="detail-value">${escapeHtml(roundLabel)}</span>
+            </div>
+            <div class="debate-detail">
+                <span class="detail-label">Draw</span>
+                <span class="detail-value">${escapeHtml(record.debateStance || "TBD")}</span>
+            </div>
+            <div class="debate-detail">
+                <span class="detail-label">Start</span>
+                <span class="detail-value">${escapeHtml(formatTimeLabel(record.debateTime, record.scheduledStart))}</span>
+            </div>
+        </div>
+        <p class="debate-meta">${escapeHtml(coachNote)}</p>
         <div class="debate-card-foot">
             <a class="primary-button debate-button" href="#">View prep materials</a>
             <a class="ghost-button debate-button" href="#">Tournament info</a>
@@ -225,25 +455,30 @@ function createUpcomingCard(debate) {
     return article;
 }
 
-function createPastCard(debate) {
+function createPastCard(record) {
     const article = document.createElement("article");
     article.className = "past-card";
 
-    const status = (debate.status || "Completed").toLowerCase();
-    const isWin = status.includes("win");
-    const badgeClass = isWin ? "result-badge result-badge--win" : "result-badge result-badge--loss";
-    const badgeText = isWin ? "Win" : "Completed";
-    const when = formatDateLabel(debate.debate_date);
+    const result = getResultLabel(record);
+    const when = formatDateLabel(record.debateDate);
+    const ballotSummary = getBallotSummary(record);
+    const feedbackSnippet = record.judging.find((entry) => entry.feedback)?.feedback || "No judge feedback posted yet.";
 
     article.innerHTML = `
         <div class="past-card-left">
-            <span class="${badgeClass}">${badgeText}</span>
+            <span class="${result.className}">${escapeHtml(result.label)}</span>
             <div>
-                <h4 class="debate-title">${debate.topic || "Debate Round"}</h4>
-                <p class="debate-meta">${when} &bull; ${debate.team_a_name || "Team A"} vs ${debate.team_b_name || "Team B"}</p>
+                <h4 class="debate-title">${escapeHtml(record.topic || record.tournamentName || "Debate Round")}</h4>
+                <p class="debate-meta">${escapeHtml(`${when} • ${record.debateType || "Debate"} • ${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</p>
+                <p class="debate-meta">${escapeHtml(feedbackSnippet)}</p>
             </div>
         </div>
         <div class="past-card-right">
+            <div class="score-display">
+                <span class="score-big">${ballotSummary.teamWins}</span>
+                <span class="score-sep">&ndash;</span>
+                <span class="score-big score-opp">${ballotSummary.opponentWins}</span>
+            </div>
             <div class="past-card-actions">
                 <a class="ghost-button" href="#">View ballots</a>
             </div>
@@ -253,11 +488,28 @@ function createPastCard(debate) {
     return article;
 }
 
+function updateDebatesSidebar(student, records) {
+    const fullName = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.email || "Debater";
+    const debateType = records.find((record) => record.debateType)?.debateType || "Debate";
+    const isCaptain = records.some((record) => record.isCaptain);
+    const completedRecords = records.filter((record) => String(record.status || "").toLowerCase() === "completed");
+    const wins = completedRecords.filter((record) => getResultLabel(record).label === "Win").length;
+    const losses = completedRecords.filter((record) => getResultLabel(record).label === "Loss").length;
+
+    updateText("[data-user-avatar]", getInitials(fullName));
+    updateText("[data-user-name]", fullName);
+    updateText("[data-user-role]", `${isCaptain ? "Captain" : "Member"} — ${debateType}`);
+    updateText("[data-rounds-count]", String(records.length));
+    updateText("[data-wins-count]", `${wins}W`);
+    updateText("[data-losses-count]", `${losses}L`);
+}
+
 async function handleDebatesPage() {
     const upcomingList = document.querySelector("[data-upcoming-list]");
     const pastList = document.querySelector("[data-past-list]");
     const upcomingCount = document.querySelector("[data-upcoming-count]");
     const pastCount = document.querySelector("[data-past-count]");
+    const messageEl = document.querySelector("[data-debates-message]");
 
     if (!upcomingList || !pastList) {
         return;
@@ -273,31 +525,83 @@ async function handleDebatesPage() {
         return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-
-    const upcomingResponse = await supabaseClient
-        .from("Debate")
-        .select("debate_id,debate_date,topic,room,status,team_a_name,team_b_name")
-        .gte("debate_date", today)
-        .order("debate_date", { ascending: true })
-        .limit(10);
-
-    const pastResponse = await supabaseClient
-        .from("Debate")
-        .select("debate_id,debate_date,topic,status,team_a_name,team_b_name")
-        .lt("debate_date", today)
-        .order("debate_date", { ascending: false })
-        .limit(10);
-
-    if (upcomingResponse.error || pastResponse.error) {
+    const student = await getStudentProfile(user);
+    if (!student) {
+        upcomingList.replaceChildren(createEmptyState("No student record was found for this account yet. Complete your profile first."));
+        pastList.replaceChildren(createEmptyState("Once your student profile is saved, your debate history will appear here."));
+        if (upcomingCount) {
+            upcomingCount.textContent = "0";
+        }
+        if (pastCount) {
+            pastCount.textContent = "0";
+        }
+        setMessage(messageEl, "No matching student record found in Supabase.", true);
         return;
     }
 
-    const upcomingDebates = upcomingResponse.data || [];
-    const pastDebates = pastResponse.data || [];
+    const today = new Date().toISOString().slice(0, 10);
 
-    upcomingList.replaceChildren(...upcomingDebates.map(createUpcomingCard));
-    pastList.replaceChildren(...pastDebates.map(createPastCard));
+    setMessage(messageEl, "Loading debates from Supabase...", false);
+
+    const participationResponse = await supabaseClient
+        .from(TABLES.studentParticipation)
+        .select(`
+            s_participation_id,
+            team_number,
+            debate_stance,
+            speaking_order,
+            is_captain,
+            debate!inner(
+                debate_id,
+                debate_date,
+                debate_time,
+                topic,
+                room,
+                status,
+                team_a_name,
+                team_b_name,
+                tournament(
+                    name,
+                    host_school,
+                    location,
+                    start_date,
+                    end_date,
+                    status
+                ),
+                tournament_round(
+                    debate_type,
+                    round_number,
+                    round_name,
+                    scheduled_start,
+                    room
+                ),
+                j_participation(
+                    ruling,
+                    score,
+                    feedback
+                ),
+                c_participation(
+                    notes
+                )
+            )
+        `)
+        .eq("student_id", student.student_id);
+
+    if (participationResponse.error) {
+        setMessage(messageEl, participationResponse.error.message, true);
+        return;
+    }
+
+    const records = (participationResponse.data || [])
+        .map(normalizeParticipationRecord)
+        .sort((left, right) => String(left.debateDate || "").localeCompare(String(right.debateDate || "")));
+    const upcomingDebates = records.filter((record) => record.debateDate >= today);
+    const pastDebates = records.filter((record) => record.debateDate < today).reverse();
+
+    updateDebatesSidebar(student, records);
+
+    upcomingList.replaceChildren(...(upcomingDebates.length ? upcomingDebates.map(createUpcomingCard) : [createEmptyState("No upcoming rounds are linked to your student profile yet.")]));
+    pastList.replaceChildren(...(pastDebates.length ? pastDebates.map(createPastCard) : [createEmptyState("No completed rounds are linked to your student profile yet.")]));
 
     if (upcomingCount) {
         upcomingCount.textContent = String(upcomingDebates.length);
@@ -306,6 +610,8 @@ async function handleDebatesPage() {
     if (pastCount) {
         pastCount.textContent = String(pastDebates.length);
     }
+
+    setMessage(messageEl, `Loaded ${records.length} debate records for ${student.first_name || student.email}.`, false);
 }
 
 async function setupSignOut() {

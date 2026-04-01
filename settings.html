@@ -33,8 +33,8 @@
             <div class="settings-header">
                 <div>
                     <p class="section-kicker">Profile settings</p>
-                    <h2>Taylor Morgan</h2>
-                    <p class="section-copy">Speech captain, varsity public forum, Eastview Debate.</p>
+                    <h2 data-settings-name>Taylor Morgan</h2>
+                    <p class="section-copy" data-settings-copy>Update your student record stored in Supabase.</p>
                 </div>
                 <button class="primary-button" type="submit" form="settings-form">Save changes</button>
             </div>
@@ -56,14 +56,19 @@
                             <input type="email" name="email" value="taylor.morgan@eastview.edu">
                         </label>
                         <label class="field">
-                            <span>Pronouns</span>
-                            <input type="text" name="pronouns" value="they/them">
+                            <span>School</span>
+                            <input type="text" name="school" value="Eastview High School">
                         </label>
                         <label class="field">
                             <span>Graduation year</span>
                             <input type="number" name="grad-year" value="2027">
                         </label>
                     </div>
+
+                    <label class="field">
+                        <span>Phone</span>
+                        <input type="tel" name="phone" value="555-1001">
+                    </label>
                 </section>
 
                 <section class="panel-card section-card">
