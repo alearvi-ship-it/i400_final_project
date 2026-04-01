@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DebateHub | Profile Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page page-settings">
+    <div class="settings-shell">
+        <aside class="settings-sidebar">
+            <div>
+                <p class="eyebrow">DebateHub</p>
+                <h1>Manage your profile.</h1>
+                <p class="hero-copy">Keep your event preferences, notifications, and team role current so coaches and captains can plan quickly.</p>
+            </div>
+
+            <div class="sidebar-card">
+                <p class="hero-card-title">Profile completion</p>
+                <div class="progress-track" aria-hidden="true">
+                    <span class="progress-fill"></span>
+                </div>
+                <p class="hero-card-body">7 of 8 profile fields are complete. Add your emergency contact before the next invitational.</p>
+            </div>
+
+            <a class="text-link sidebar-link" href="index.html">Return to login</a>
+        </aside>
+
+        <main class="settings-main">
+            <div class="settings-header">
+                <div>
+                    <p class="section-kicker">Profile settings</p>
+                    <h2>Taylor Morgan</h2>
+                    <p class="section-copy">Speech captain, varsity public forum, Eastview Debate.</p>
+                </div>
+                <button class="primary-button" type="submit" form="settings-form">Save changes</button>
+            </div>
+
+            <form id="settings-form" class="settings-grid" action="#" method="post">
+                <section class="panel-card section-card">
+                    <div class="section-heading">
+                        <h3>Personal info</h3>
+                        <p>Basic identity and school information.</p>
+                    </div>
+
+                    <div class="grid-two">
+                        <label class="field">
+                            <span>Full name</span>
+                            <input type="text" name="full-name" value="Taylor Morgan">
+                        </label>
+                        <label class="field">
+                            <span>Email</span>
+                            <input type="email" name="email" value="taylor.morgan@eastview.edu">
+                        </label>
+                        <label class="field">
+                            <span>Pronouns</span>
+                            <input type="text" name="pronouns" value="they/them">
+                        </label>
+                        <label class="field">
+                            <span>Graduation year</span>
+                            <input type="number" name="grad-year" value="2027">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-card section-card">
+                    <div class="section-heading">
+                        <h3>Debate role</h3>
+                        <p>Set the formats and responsibilities tied to your account.</p>
+                    </div>
+
+                    <div class="grid-two">
+                        <label class="field">
+                            <span>Primary event</span>
+                            <select name="primary-event">
+                                <option>Public Forum</option>
+                                <option>Lincoln-Douglas</option>
+                                <option>Policy</option>
+                                <option>Congress</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>Team role</span>
+                            <select name="team-role">
+                                <option>Captain</option>
+                                <option>Co-captain</option>
+                                <option>Varsity member</option>
+                                <option>Novice member</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <label class="field">
+                        <span>Prep strengths</span>
+                        <textarea name="strengths" rows="4" placeholder="Research depth, rebuttal strategy, speaking drills, judging experience">Crossfire strategy, novice mentoring, and speech redrafting.</textarea>
+                    </label>
+                </section>
+
+                <section class="panel-card section-card">
+                    <div class="section-heading">
+                        <h3>Notifications</h3>
+                        <p>Choose how you want tournament and practice updates delivered.</p>
+                    </div>
+
+                    <div class="toggle-list">
+                        <label class="toggle-row">
+                            <div>
+                                <span>Practice reminders</span>
+                                <small>Receive reminders 2 hours before scheduled practice.</small>
+                            </div>
+                            <input type="checkbox" name="practice-reminders" checked>
+                        </label>
+                        <label class="toggle-row">
+                            <div>
+                                <span>Tournament schedule changes</span>
+                                <small>Get instant updates when pairings or transportation changes.</small>
+                            </div>
+                            <input type="checkbox" name="schedule-changes" checked>
+                        </label>
+                        <label class="toggle-row">
+                            <div>
+                                <span>Judge feedback digest</span>
+                                <small>Bundle written feedback into one evening summary.</small>
+                            </div>
+                            <input type="checkbox" name="feedback-digest">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-card section-card">
+                    <div class="section-heading">
+                        <h3>Account security</h3>
+                        <p>Update your password and session protections.</p>
+                    </div>
+
+                    <div class="grid-two">
+                        <label class="field">
+                            <span>New password</span>
+                            <input type="password" name="new-password" placeholder="Create a stronger password">
+                        </label>
+                        <label class="field">
+                            <span>Confirm password</span>
+                            <input type="password" name="confirm-password" placeholder="Repeat your new password">
+                        </label>
+                    </div>
+
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="two-factor" checked>
+                        <span>Require verification for new devices</span>
+                    </label>
+                </section>
+            </form>
+        </main>
+    </div>
+</body>
+</html>
