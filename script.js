@@ -42,6 +42,16 @@ function getSupabaseClient() {
 
 const supabaseClient = getSupabaseClient();
 
+async function requireAuth() {
+    if (!supabaseClient) {
+        return;
+    }
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+        window.location.replace("index.html");
+    }
+}
+
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -213,6 +223,8 @@ async function preloadSettingsForm() {
 }
 
 async function handleSettingsForm() {
+    await requireAuth();
+
     const settingsForm = document.querySelector("[data-settings-form]");
     const messageEl = document.querySelector("[data-settings-message]");
 
@@ -505,6 +517,8 @@ function updateDebatesSidebar(student, records) {
 }
 
 async function handleDebatesPage() {
+    await requireAuth();
+
     const upcomingList = document.querySelector("[data-upcoming-list]");
     const pastList = document.querySelector("[data-past-list]");
     const upcomingCount = document.querySelector("[data-upcoming-count]");
