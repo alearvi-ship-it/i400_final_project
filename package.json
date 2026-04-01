@@ -5,6 +5,7 @@
   "description": "DebateHub static site served by a minimal Node server for Render Web Service deployments.",
   "main": "server.js",
   "scripts": {
+    "build": "node -e \"console.log('No build step required for this static app')\"",
     "start": "node server.js"
   },
   "engines": {
