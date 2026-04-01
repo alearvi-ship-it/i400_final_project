@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DebateHub | My Debates</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page page-debates">
+    <div class="debates-shell">
+        <aside class="debates-sidebar">
+            <div class="sidebar-top">
+                <p class="eyebrow">DebateHub</p>
+                <div class="user-badge">
+                    <span class="user-avatar">TM</span>
+                    <div>
+                        <p class="user-name">Taylor Morgan</p>
+                        <p class="user-role">Speech captain &mdash; Public Forum</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-stats">
+                    <div class="sidebar-stat">
+                        <span class="stat-value">18</span>
+                        <span class="stat-label">Rounds this season</span>
+                    </div>
+                    <div class="sidebar-stat">
+                        <span class="stat-value">13W</span>
+                        <span class="stat-label">Wins</span>
+                    </div>
+                    <div class="sidebar-stat">
+                        <span class="stat-value">5L</span>
+                        <span class="stat-label">Losses</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" aria-label="Site">
+                <a class="sidebar-nav-item active" href="debates.html" aria-current="page">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    My Debates
+                </a>
+                <a class="sidebar-nav-item" href="settings.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile settings
+                </a>
+                <a class="sidebar-nav-item sidebar-nav-signout" href="index.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                </a>
+            </nav>
+        </aside>
+
+        <main class="debates-main">
+            <header class="debates-header">
+                <div>
+                    <p class="section-kicker">My Debates</p>
+                    <h2>Your schedule &amp; history</h2>
+                    <p class="section-copy">All rounds linked to your account — upcoming tournaments, completed rounds, and judge feedback.</p>
+                </div>
+            </header>
+
+            <!-- Upcoming debates -->
+            <section class="debate-section">
+                <div class="debate-section-label">
+                    <h3>Upcoming</h3>
+                    <span class="count-badge">3</span>
+                </div>
+
+                <div class="debate-grid">
+                    <article class="debate-card debate-card--upcoming">
+                        <div class="debate-card-head">
+                            <div>
+                                <span class="tag tag--event">Public Forum</span>
+                                <span class="tag tag--upcoming">Registered</span>
+                            </div>
+                            <time class="debate-date" datetime="2026-04-05">Apr 5, 2026</time>
+                        </div>
+                        <h4 class="debate-title">State Qualifier Tournament</h4>
+                        <p class="debate-meta">Eastview High School &bull; St. Paul, MN</p>
+                        <div class="debate-details">
+                            <div class="debate-detail">
+                                <span class="detail-label">Partner</span>
+                                <span class="detail-value">Alex Chen</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Side draw</span>
+                                <span class="detail-value">Pending</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Rounds</span>
+                                <span class="detail-value">6 prelims + elims</span>
+                            </div>
+                        </div>
+                        <div class="debate-card-foot">
+                            <a class="primary-button debate-button" href="#">View prep materials</a>
+                            <a class="ghost-button debate-button" href="#">Tournament info</a>
+                        </div>
+                    </article>
+
+                    <article class="debate-card debate-card--upcoming">
+                        <div class="debate-card-head">
+                            <div>
+                                <span class="tag tag--event">Public Forum</span>
+                                <span class="tag tag--upcoming">Registered</span>
+                            </div>
+                            <time class="debate-date" datetime="2026-04-12">Apr 12, 2026</time>
+                        </div>
+                        <h4 class="debate-title">Spring Invitational</h4>
+                        <p class="debate-meta">Lakewood Academy &bull; Minneapolis, MN</p>
+                        <div class="debate-details">
+                            <div class="debate-detail">
+                                <span class="detail-label">Partner</span>
+                                <span class="detail-value">Alex Chen</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Side draw</span>
+                                <span class="detail-value">Aff</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Rounds</span>
+                                <span class="detail-value">5 prelims</span>
+                            </div>
+                        </div>
+                        <div class="debate-card-foot">
+                            <a class="primary-button debate-button" href="#">View prep materials</a>
+                            <a class="ghost-button debate-button" href="#">Tournament info</a>
+                        </div>
+                    </article>
+
+                    <article class="debate-card debate-card--upcoming">
+                        <div class="debate-card-head">
+                            <div>
+                                <span class="tag tag--event">Congress</span>
+                                <span class="tag tag--draft">Waitlisted</span>
+                            </div>
+                            <time class="debate-date" datetime="2026-04-26">Apr 26, 2026</time>
+                        </div>
+                        <h4 class="debate-title">Regional Championship</h4>
+                        <p class="debate-meta">Northfield High School &bull; Northfield, MN</p>
+                        <div class="debate-details">
+                            <div class="debate-detail">
+                                <span class="detail-label">Chamber</span>
+                                <span class="detail-value">Senate A</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Legislation</span>
+                                <span class="detail-value">3 bills assigned</span>
+                            </div>
+                            <div class="debate-detail">
+                                <span class="detail-label">Sessions</span>
+                                <span class="detail-value">2 full days</span>
+                            </div>
+                        </div>
+                        <div class="debate-card-foot">
+                            <a class="primary-button debate-button" href="#">View prep materials</a>
+                            <a class="ghost-button debate-button" href="#">Tournament info</a>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <!-- Past debates -->
+            <section class="debate-section">
+                <div class="debate-section-label">
+                    <h3>Past rounds</h3>
+                    <span class="count-badge">4</span>
+                </div>
+
+                <div class="past-debate-list">
+                    <article class="past-card">
+                        <div class="past-card-left">
+                            <span class="result-badge result-badge--win">Win</span>
+                            <div>
+                                <h4 class="debate-title">City Championships</h4>
+                                <p class="debate-meta">Feb 14, 2026 &bull; Public Forum &bull; Partner: Alex Chen</p>
+                            </div>
+                        </div>
+                        <div class="past-card-right">
+                            <div class="score-display">
+                                <span class="score-big">3</span>
+                                <span class="score-sep">&ndash;</span>
+                                <span class="score-big score-opp">0</span>
+                            </div>
+                            <div class="past-card-actions">
+                                <a class="ghost-button" href="#">View ballots</a>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="past-card">
+                        <div class="past-card-left">
+                            <span class="result-badge result-badge--loss">Loss</span>
+                            <div>
+                                <h4 class="debate-title">Practice Tournament</h4>
+                                <p class="debate-meta">Feb 28, 2026 &bull; Public Forum &bull; Partner: Jordan Lee</p>
+                            </div>
+                        </div>
+                        <div class="past-card-right">
+                            <div class="score-display">
+                                <span class="score-big">1</span>
+                                <span class="score-sep">&ndash;</span>
+                                <span class="score-big score-opp">2</span>
+                            </div>
+                            <div class="past-card-actions">
+                                <a class="ghost-button" href="#">View ballots</a>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="past-card">
+                        <div class="past-card-left">
+                            <span class="result-badge result-badge--win">Win</span>
+                            <div>
+                                <h4 class="debate-title">District Tournament</h4>
+                                <p class="debate-meta">Mar 7, 2026 &bull; Public Forum &bull; Partner: Alex Chen</p>
+                            </div>
+                        </div>
+                        <div class="past-card-right">
+                            <div class="score-display">
+                                <span class="score-big">2</span>
+                                <span class="score-sep">&ndash;</span>
+                                <span class="score-big score-opp">1</span>
+                            </div>
+                            <div class="past-card-actions">
+                                <a class="ghost-button" href="#">View ballots</a>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="past-card">
+                        <div class="past-card-left">
+                            <span class="result-badge result-badge--win">Win</span>
+                            <div>
+                                <h4 class="debate-title">Winter Classic</h4>
+                                <p class="debate-meta">Mar 14, 2026 &bull; Public Forum &bull; Partner: Alex Chen</p>
+                            </div>
+                        </div>
+                        <div class="past-card-right">
+                            <div class="score-display">
+                                <span class="score-big">3</span>
+                                <span class="score-sep">&ndash;</span>
+                                <span class="score-big score-opp">0</span>
+                            </div>
+                            <div class="past-card-actions">
+                                <a class="ghost-button" href="#">View ballots</a>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
