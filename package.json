@@ -6,6 +6,7 @@
   "main": "server.js",
   "scripts": {
     "build": "node -e \"console.log('No build step required for this static app')\"",
+    "dev": "node server.js",
     "start": "node server.js"
   },
   "engines": {
