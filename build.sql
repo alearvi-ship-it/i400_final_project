@@ -289,6 +289,60 @@ from unnest(array[
   'Images'::regclass
 ]) as trigger_targets(target_table);
 
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  requested_account_type text := lower(coalesce(new.raw_user_meta_data ->> 'account_type', 'student'));
+  account_type text := case
+    when requested_account_type in ('coach', 'judge') then requested_account_type
+    else 'student'
+  end;
+  email_local_part text := regexp_replace(split_part(coalesce(new.email, ''), '@', 1), '[._-]+', ' ', 'g');
+  derived_first_name text := coalesce(nullif(initcap(split_part(email_local_part, ' ', 1)), ''), 'New');
+  derived_last_name text := coalesce(
+    nullif(initcap(btrim(substr(email_local_part, length(split_part(email_local_part, ' ', 1)) + 1))), ''),
+    'Member'
+  );
+begin
+  if account_type = 'coach' then
+    insert into Coaches (
+      auth_user_id, first_name, last_name, school, email, phone, years_experience
+    ) values (
+      new.id, derived_first_name, derived_last_name, null, new.email, null, null
+    )
+    on conflict (email) do update
+    set auth_user_id = excluded.auth_user_id,
+        updated_at = now();
+  elsif account_type = 'judge' then
+    insert into Judges (
+      auth_user_id, first_name, last_name, school, email, certification, phone
+    ) values (
+      new.id, derived_first_name, derived_last_name, null, new.email, null, null
+    )
+    on conflict (email) do update
+    set auth_user_id = excluded.auth_user_id,
+        updated_at = now();
+  else
+    insert into Students (
+      auth_user_id, first_name, last_name, school, email, graduation_year, phone
+    ) values (
+      new.id, derived_first_name, derived_last_name, null, new.email, null, null
+    )
+    on conflict (email) do update
+    set auth_user_id = excluded.auth_user_id,
+        updated_at = now();
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+
 -- ------------------------------------------------------------
 -- Sample seed data
 -- ------------------------------------------------------------
@@ -411,6 +465,10 @@ insert into Images (
   ('a0000000-0000-0000-0000-000000000008', 'Admin Morgan profile picture', '/images/profiles/admins/morgan-reed.jpg', 'profile-images', 'admins/morgan-reed.jpg', 'image/jpeg', null, null, null, '30000000-0000-0000-0000-000000000002')
 on conflict (image_id) do nothing;
 
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_auth_user();
+
 -- ------------------------------------------------------------
 -- Supabase auth + RLS policies
 -- ------------------------------------------------------------
@@ -463,6 +521,74 @@ with check (
 drop policy if exists students_update_own on Students;
 create policy students_update_own
 on Students
+for update
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or (auth_user_id is null and lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email))
+)
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists judges_select_own on Judges;
+create policy judges_select_own
+on Judges
+for select
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists judges_insert_own on Judges;
+create policy judges_insert_own
+on Judges
+for insert
+to authenticated
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists judges_update_own on Judges;
+create policy judges_update_own
+on Judges
+for update
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or (auth_user_id is null and lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email))
+)
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists coaches_select_own on Coaches;
+create policy coaches_select_own
+on Coaches
+for select
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists coaches_insert_own on Coaches;
+create policy coaches_insert_own
+on Coaches
+for insert
+to authenticated
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists coaches_update_own on Coaches;
+create policy coaches_update_own
+on Coaches
 for update
 to authenticated
 using (

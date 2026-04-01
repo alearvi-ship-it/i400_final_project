@@ -18,10 +18,39 @@ if (toggleButton) {
 
 const TABLES = {
     students: "students",
+    judges: "judges",
+    coaches: "coaches",
     debate: "debate",
     tournament: "tournament",
     tournamentRound: "tournament_round",
     studentParticipation: "s_participation"
+};
+
+const PROFILE_CONFIG = {
+    student: {
+        accountType: "student",
+        table: TABLES.students,
+        idColumn: "student_id",
+        selectColumns: "student_id,auth_user_id,first_name,last_name,school,email,graduation_year,phone"
+    },
+    coach: {
+        accountType: "coach",
+        table: TABLES.coaches,
+        idColumn: "coach_id",
+        selectColumns: "coach_id,auth_user_id,first_name,last_name,school,email,phone,years_experience"
+    },
+    judge: {
+        accountType: "judge",
+        table: TABLES.judges,
+        idColumn: "judge_id",
+        selectColumns: "judge_id,auth_user_id,first_name,last_name,school,email,phone,certification"
+    }
+};
+
+const ACCOUNT_TYPE_LABELS = {
+    student: "Student",
+    coach: "Coach",
+    judge: "Judge"
 };
 
 function getSupabaseClient() {
@@ -88,12 +117,84 @@ function getInitials(fullName) {
     return letters || "DH";
 }
 
+function normalizeAccountType(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return PROFILE_CONFIG[normalized] ? normalized : "student";
+}
+
+function getRoleLabel(accountType) {
+    return ACCOUNT_TYPE_LABELS[normalizeAccountType(accountType)] || "Student";
+}
+
+function getDisplayName(profile, user) {
+    const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ");
+    return fullName || profile?.email || user?.email || `${getRoleLabel(profile?.accountType || user?.user_metadata?.account_type)} Account`;
+}
+
+async function getProfileByType(user, accountType) {
+    if (!supabaseClient || !user) {
+        return null;
+    }
+
+    const profileConfig = PROFILE_CONFIG[normalizeAccountType(accountType)];
+    if (!profileConfig) {
+        return null;
+    }
+
+    const byAuthUser = await supabaseClient
+        .from(profileConfig.table)
+        .select(profileConfig.selectColumns)
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+    if (byAuthUser.data) {
+        return { ...byAuthUser.data, accountType: profileConfig.accountType };
+    }
+
+    if (!user.email) {
+        return null;
+    }
+
+    const byEmail = await supabaseClient
+        .from(profileConfig.table)
+        .select(profileConfig.selectColumns)
+        .eq("email", user.email)
+        .maybeSingle();
+
+    return byEmail.data ? { ...byEmail.data, accountType: profileConfig.accountType } : null;
+}
+
+async function getCurrentProfile(user) {
+    const preferredType = normalizeAccountType(user?.user_metadata?.account_type);
+    const lookupOrder = [
+        preferredType,
+        ...Object.keys(PROFILE_CONFIG).filter((accountType) => accountType !== preferredType)
+    ];
+
+    for (const accountType of lookupOrder) {
+        const profile = await getProfileByType(user, accountType);
+        if (profile) {
+            return profile;
+        }
+    }
+
+    return null;
+}
+
+function setGraduationFieldVisibility(settingsForm, accountType) {
+    const gradYearField = settingsForm?.querySelector('input[name="grad-year"]')?.closest(".field");
+    if (gradYearField) {
+        gradYearField.hidden = normalizeAccountType(accountType) !== "student";
+    }
+}
+
 async function handleLoginForm() {
     const loginForm = document.querySelector("[data-login-form]");
     const messageEl = document.querySelector("[data-auth-message]");
     const headingEl = document.querySelector("[data-login-heading]");
     const subheadingEl = document.querySelector("[data-login-subheading]");
     const confirmField = document.querySelector("[data-confirm-field]");
+    const accountTypeField = document.querySelector("[data-account-type-field]");
     const submitBtn = loginForm?.querySelector('button[type="submit"]');
     const authTabs = document.querySelectorAll("[data-auth-tab]");
 
@@ -135,6 +236,17 @@ async function handleLoginForm() {
                 }
             }
         }
+        if (accountTypeField) {
+            accountTypeField.hidden = !signUp;
+            accountTypeField.setAttribute("aria-hidden", signUp ? "false" : "true");
+            const accountTypeInput = accountTypeField.querySelector("select");
+            if (accountTypeInput) {
+                accountTypeInput.required = signUp;
+                if (!accountTypeInput.value) {
+                    accountTypeInput.value = "student";
+                }
+            }
+        }
         const passwordInput = loginForm.querySelector('input[name="password"]');
         if (passwordInput) {
             passwordInput.autocomplete = signUp ? "new-password" : "current-password";
@@ -171,18 +283,32 @@ async function handleLoginForm() {
 
         if (isSignUp) {
             const confirmPassword = loginForm.querySelector('input[name="confirm-password"]')?.value || "";
+            const accountType = loginForm.querySelector('select[name="account-type"]')?.value || "student";
             if (password !== confirmPassword) {
                 setMessage(messageEl, "Passwords do not match.", true);
                 return;
             }
 
             setMessage(messageEl, "Creating account...", false);
-            const { error } = await supabaseClient.auth.signUp({ email, password });
+            const { data, error } = await supabaseClient.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        account_type: accountType
+                    }
+                }
+            });
             if (error) {
                 setMessage(messageEl, error.message, true);
                 return;
             }
-            setMessage(messageEl, "Account created! Check your email to confirm, then sign in.", false);
+            if (data?.session) {
+                setMessage(messageEl, "Account created. Redirecting...", false);
+                window.location.href = "debates.html";
+                return;
+            }
+            setMessage(messageEl, "Account created. Sign in to continue.", false);
             setMode(false);
             return;
         }
@@ -219,43 +345,14 @@ async function requireAuthenticatedUser() {
 }
 
 async function getStudentProfile(user) {
-    if (!supabaseClient || !user) {
-        return null;
-    }
-
-    const selectedColumns = "student_id,auth_user_id,first_name,last_name,school,email,graduation_year,phone";
-
-    const byAuthUser = await supabaseClient
-        .from(TABLES.students)
-        .select(selectedColumns)
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-    if (byAuthUser.data) {
-        return byAuthUser.data;
-    }
-
-    if (!user.email) {
-        return null;
-    }
-
-    const byEmail = await supabaseClient
-        .from(TABLES.students)
-        .select(selectedColumns)
-        .eq("email", user.email)
-        .maybeSingle();
-
-    return byEmail.data || null;
+    return getProfileByType(user, "student");
 }
 
-function updateSettingsHeader(student) {
-    if (!student) {
-        return;
-    }
-
-    const fullName = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.email || "Student Profile";
+function updateSettingsHeader(profile, user) {
+    const fullName = getDisplayName(profile, user);
+    const accountType = normalizeAccountType(profile?.accountType || user?.user_metadata?.account_type);
     updateText("[data-settings-name]", fullName);
-    updateText("[data-settings-copy]", `${student.school || "School not set"} • ${student.email || "No email on file"}`);
+    updateText("[data-settings-copy]", `${profile?.school || "School not set"} • ${profile?.email || user?.email || "No email on file"} • ${getRoleLabel(accountType)}`);
 }
 
 async function preloadSettingsForm() {
@@ -269,23 +366,54 @@ async function preloadSettingsForm() {
         return;
     }
 
-    settingsForm.querySelector('input[name="email"]').value = user.email || settingsForm.querySelector('input[name="email"]').value;
+    const fullNameInput = settingsForm.querySelector('input[name="full-name"]');
+    const emailInput = settingsForm.querySelector('input[name="email"]');
+    const schoolInput = settingsForm.querySelector('input[name="school"]');
+    const phoneInput = settingsForm.querySelector('input[name="phone"]');
+    const gradYearInput = settingsForm.querySelector('input[name="grad-year"]');
+    const profile = await getCurrentProfile(user);
+    const accountType = normalizeAccountType(profile?.accountType || user.user_metadata?.account_type);
 
-    const data = await getStudentProfile(user);
+    if (fullNameInput) {
+        fullNameInput.value = "";
+    }
+    if (emailInput) {
+        emailInput.value = user.email || "";
+    }
+    if (schoolInput) {
+        schoolInput.value = "";
+    }
+    if (phoneInput) {
+        phoneInput.value = "";
+    }
+    if (gradYearInput) {
+        gradYearInput.value = "";
+    }
 
-    if (!data) {
-        updateSettingsHeader({ email: user.email });
+    setGraduationFieldVisibility(settingsForm, accountType);
+
+    if (!profile) {
+        updateSettingsHeader({ email: user.email, accountType }, user);
         return;
     }
 
-    settingsForm.querySelector('input[name="full-name"]').value = [data.first_name, data.last_name].filter(Boolean).join(" ");
-    settingsForm.querySelector('input[name="school"]').value = data.school || "";
-    settingsForm.querySelector('input[name="phone"]').value = data.phone || "";
-    if (data.graduation_year) {
-        settingsForm.querySelector('input[name="grad-year"]').value = data.graduation_year;
+    if (fullNameInput) {
+        fullNameInput.value = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
+    }
+    if (emailInput) {
+        emailInput.value = profile.email || user.email || "";
+    }
+    if (schoolInput) {
+        schoolInput.value = profile.school || "";
+    }
+    if (phoneInput) {
+        phoneInput.value = profile.phone || "";
+    }
+    if (gradYearInput && accountType === "student" && profile.graduation_year) {
+        gradYearInput.value = profile.graduation_year;
     }
 
-    updateSettingsHeader(data);
+    updateSettingsHeader(profile, user);
 }
 
 async function handleSettingsForm() {
@@ -334,7 +462,9 @@ async function handleSettingsForm() {
             return;
         }
 
-        const existingProfile = await getStudentProfile(user);
+        const existingProfile = await getCurrentProfile(user);
+        const accountType = normalizeAccountType(existingProfile?.accountType || user.user_metadata?.account_type);
+        const profileConfig = PROFILE_CONFIG[accountType];
 
         setMessage(messageEl, "Saving profile...", false);
 
@@ -345,16 +475,21 @@ async function handleSettingsForm() {
             email,
             school,
             phone,
-            graduation_year: Number.isFinite(gradYear) ? gradYear : null,
         };
 
-        const profileMutation = existingProfile?.student_id
+        if (accountType === "student") {
+            payload.graduation_year = Number.isFinite(gradYear) ? gradYear : null;
+        }
+
+        const existingProfileId = existingProfile?.[profileConfig.idColumn];
+
+        const profileMutation = existingProfileId
             ? supabaseClient
-                .from(TABLES.students)
+                .from(profileConfig.table)
                 .update(payload)
-                .eq("student_id", existingProfile.student_id)
+                .eq(profileConfig.idColumn, existingProfileId)
             : supabaseClient
-                .from(TABLES.students)
+                .from(profileConfig.table)
                 .upsert(payload, { onConflict: "email" });
 
         const { error } = await profileMutation;
@@ -381,7 +516,8 @@ async function handleSettingsForm() {
         }
 
         setMessage(messageEl, "Profile saved.", false);
-        updateSettingsHeader({ first_name: firstName, last_name: lastName, school, email });
+        setGraduationFieldVisibility(settingsForm, accountType);
+        updateSettingsHeader({ ...existingProfile, ...payload, accountType }, user);
     });
 }
 
@@ -566,20 +702,24 @@ function createPastCard(record) {
     return article;
 }
 
-function updateDebatesSidebar(student, records) {
-    const fullName = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.email || "Debater";
+function updateDebatesSidebar(profile, records) {
+    const fullName = getDisplayName(profile);
+    const accountType = normalizeAccountType(profile?.accountType);
     const debateType = records.find((record) => record.debateType)?.debateType || "Debate";
     const isCaptain = records.some((record) => record.isCaptain);
     const completedRecords = records.filter((record) => String(record.status || "").toLowerCase() === "completed");
     const wins = completedRecords.filter((record) => getResultLabel(record).label === "Win").length;
     const losses = completedRecords.filter((record) => getResultLabel(record).label === "Loss").length;
+    const roleLabel = accountType === "student"
+        ? `${isCaptain ? "Captain" : "Member"} — ${debateType}`
+        : `${getRoleLabel(accountType)} account`;
 
     updateText("[data-user-avatar]", getInitials(fullName));
     updateText("[data-user-name]", fullName);
-    updateText("[data-user-role]", `${isCaptain ? "Captain" : "Member"} — ${debateType}`);
-    updateText("[data-rounds-count]", String(records.length));
-    updateText("[data-wins-count]", `${wins}W`);
-    updateText("[data-losses-count]", `${losses}L`);
+    updateText("[data-user-role]", roleLabel);
+    updateText("[data-rounds-count]", String(accountType === "student" ? records.length : 0));
+    updateText("[data-wins-count]", `${accountType === "student" ? wins : 0}W`);
+    updateText("[data-losses-count]", `${accountType === "student" ? losses : 0}L`);
 }
 
 async function handleDebatesPage() {
@@ -605,19 +745,43 @@ async function handleDebatesPage() {
         return;
     }
 
-    const student = await getStudentProfile(user);
-    if (!student) {
-        upcomingList.replaceChildren(createEmptyState("No student record was found for this account yet. Complete your profile first."));
-        pastList.replaceChildren(createEmptyState("Once your student profile is saved, your debate history will appear here."));
+    const profile = await getCurrentProfile(user);
+    const fallbackProfile = profile || {
+        accountType: normalizeAccountType(user.user_metadata?.account_type),
+        email: user.email,
+        first_name: "",
+        last_name: ""
+    };
+
+    updateDebatesSidebar(fallbackProfile, []);
+
+    if (!profile) {
+        upcomingList.replaceChildren(createEmptyState("No matching profile record was found for this account yet. Complete your profile first."));
+        pastList.replaceChildren(createEmptyState("Once your profile is saved, your debate history will appear here."));
         if (upcomingCount) {
             upcomingCount.textContent = "0";
         }
         if (pastCount) {
             pastCount.textContent = "0";
         }
-        setMessage(messageEl, "No matching student record found in Supabase.", true);
+        setMessage(messageEl, "No matching profile record found in Supabase.", true);
         return;
     }
+
+    if (profile.accountType !== "student" || !profile.student_id) {
+        upcomingList.replaceChildren(createEmptyState(`${getRoleLabel(profile.accountType)} accounts do not have student debate rounds attached to this page.`));
+        pastList.replaceChildren(createEmptyState("Student round history will appear here for student accounts."));
+        if (upcomingCount) {
+            upcomingCount.textContent = "0";
+        }
+        if (pastCount) {
+            pastCount.textContent = "0";
+        }
+        setMessage(messageEl, `${getRoleLabel(profile.accountType)} account loaded. No student debate schedule is available for this profile.`, false);
+        return;
+    }
+
+    const student = profile;
 
     const today = new Date().toISOString().slice(0, 10);
 
