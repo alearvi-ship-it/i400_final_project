@@ -13,6 +13,103 @@ begin
 end;
 $$;
 
+create or replace function create_seed_auth_user(
+  seed_user_id uuid,
+  seed_email text,
+  seed_password text
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  insert into auth.users (
+    instance_id,
+    id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    email_change,
+    email_change_token_new,
+    recovery_token,
+    confirmed_at
+  ) values (
+    '00000000-0000-0000-0000-000000000000',
+    seed_user_id,
+    'authenticated',
+    'authenticated',
+    seed_email,
+    crypt(seed_password, gen_salt('bf')),
+    now(),
+    jsonb_build_object('provider', 'email', 'providers', array['email']),
+    '{}'::jsonb,
+    now(),
+    now(),
+    '',
+    '',
+    '',
+    '',
+    now()
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      encrypted_password = excluded.encrypted_password,
+      email_confirmed_at = excluded.email_confirmed_at,
+      raw_app_meta_data = excluded.raw_app_meta_data,
+      raw_user_meta_data = excluded.raw_user_meta_data,
+      updated_at = now(),
+      confirmed_at = excluded.confirmed_at;
+
+  insert into auth.identities (
+    id,
+    user_id,
+    provider_id,
+    identity_data,
+    provider,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) values (
+    seed_user_id,
+    seed_user_id,
+    seed_email,
+    jsonb_build_object('sub', seed_user_id::text, 'email', seed_email),
+    'email',
+    now(),
+    now(),
+    now()
+  )
+  on conflict (id) do update
+  set provider_id = excluded.provider_id,
+      identity_data = excluded.identity_data,
+      last_sign_in_at = excluded.last_sign_in_at,
+      updated_at = now();
+end;
+$$;
+
+create or replace function sync_updated_at_trigger(target_table regclass)
+returns void
+language plpgsql
+as $$
+declare
+  trigger_name text := format('trg_%s_updated_at', lower(target_table::text));
+begin
+  execute format('drop trigger if exists %I on %s', trigger_name, target_table);
+  execute format(
+    'create trigger %I before update on %s for each row execute function set_updated_at()',
+    trigger_name,
+    target_table
+  );
+end;
+$$;
+
 create table if not exists Students (
   student_id uuid primary key default gen_random_uuid(),
   auth_user_id uuid unique references auth.users(id) on delete set null,
@@ -28,6 +125,7 @@ create table if not exists Students (
 
 create table if not exists Judges (
   judge_id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   first_name text not null,
   last_name text not null,
   school text,
@@ -40,6 +138,7 @@ create table if not exists Judges (
 
 create table if not exists Coaches (
   coach_id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   first_name text not null,
   last_name text not null,
   school text,
@@ -52,6 +151,7 @@ create table if not exists Coaches (
 
 create table if not exists Administrator (
   admin_id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   first_name text not null,
   last_name text not null,
   school text,
@@ -177,98 +277,70 @@ create index if not exists idx_j_participation_judge_id on J_Participation(judge
 create index if not exists idx_c_participation_debate_id on C_Participation(debate_id);
 create index if not exists idx_c_participation_coach_id on C_Participation(coach_id);
 
-drop trigger if exists trg_students_updated_at on Students;
-create trigger trg_students_updated_at
-before update on Students
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_judges_updated_at on Judges;
-create trigger trg_judges_updated_at
-before update on Judges
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_coaches_updated_at on Coaches;
-create trigger trg_coaches_updated_at
-before update on Coaches
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_administrator_updated_at on Administrator;
-create trigger trg_administrator_updated_at
-before update on Administrator
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_tournament_updated_at on Tournament;
-create trigger trg_tournament_updated_at
-before update on Tournament
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_tournament_round_updated_at on Tournament_Round;
-create trigger trg_tournament_round_updated_at
-before update on Tournament_Round
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_debate_updated_at on Debate;
-create trigger trg_debate_updated_at
-before update on Debate
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_s_participation_updated_at on S_Participation;
-create trigger trg_s_participation_updated_at
-before update on S_Participation
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_j_participation_updated_at on J_Participation;
-create trigger trg_j_participation_updated_at
-before update on J_Participation
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_c_participation_updated_at on C_Participation;
-create trigger trg_c_participation_updated_at
-before update on C_Participation
-for each row execute function set_updated_at();
-
-drop trigger if exists trg_images_updated_at on Images;
-create trigger trg_images_updated_at
-before update on Images
-for each row execute function set_updated_at();
+select sync_updated_at_trigger(target_table)
+from unnest(array[
+  'Students'::regclass,
+  'Judges'::regclass,
+  'Coaches'::regclass,
+  'Administrator'::regclass,
+  'Tournament'::regclass,
+  'Tournament_Round'::regclass,
+  'Debate'::regclass,
+  'S_Participation'::regclass,
+  'J_Participation'::regclass,
+  'C_Participation'::regclass,
+  'Images'::regclass
+]) as trigger_targets(target_table);
 
 -- ------------------------------------------------------------
 -- Sample seed data
 -- ------------------------------------------------------------
 
+select create_seed_auth_user(seed_user_id, seed_email, seed_password)
+from (values
+  ('f0000000-0000-0000-0000-000000000001'::uuid, 'taylor.morgan@eastview.edu', 'student'),
+  ('f0000000-0000-0000-0000-000000000002'::uuid, 'mia.rodriguez@judges.org', 'judge'),
+  ('f0000000-0000-0000-0000-000000000003'::uuid, 'renee.davis@eastview.edu', 'coach'),
+  ('f0000000-0000-0000-0000-000000000004'::uuid, 'avery.patel@eastview.edu', 'admin')
+) as seed_users(seed_user_id, seed_email, seed_password);
+
 insert into Administrator (
-  admin_id, first_name, last_name, school, email, role_title, phone
+  admin_id, auth_user_id, first_name, last_name, school, email, role_title, phone
 ) values
-  ('30000000-0000-0000-0000-000000000001', 'Avery', 'Patel', 'Eastview High School', 'avery.patel@eastview.edu', 'Tournament Director', '555-0101'),
-  ('30000000-0000-0000-0000-000000000002', 'Morgan', 'Reed', 'Lakewood Academy', 'morgan.reed@lakewood.edu', 'Assistant Tournament Director', '555-0102')
-on conflict (admin_id) do nothing;
+  ('30000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000004', 'Avery', 'Patel', 'Eastview High School', 'avery.patel@eastview.edu', 'Tournament Director', '555-0101'),
+  ('30000000-0000-0000-0000-000000000002', null, 'Morgan', 'Reed', 'Lakewood Academy', 'morgan.reed@lakewood.edu', 'Assistant Tournament Director', '555-0102')
+on conflict (admin_id) do update
+set auth_user_id = excluded.auth_user_id;
 
 insert into Students (
-  student_id, first_name, last_name, school, email, graduation_year, phone
+  student_id, auth_user_id, first_name, last_name, school, email, graduation_year, phone
 ) values
-  ('00000000-0000-0000-0000-000000000001', 'Taylor', 'Morgan', 'Eastview High School', 'taylor.morgan@eastview.edu', 2027, '555-1001'),
-  ('00000000-0000-0000-0000-000000000002', 'Alex', 'Chen', 'Eastview High School', 'alex.chen@eastview.edu', 2027, '555-1002'),
-  ('00000000-0000-0000-0000-000000000003', 'Jordan', 'Lee', 'Lakewood Academy', 'jordan.lee@lakewood.edu', 2028, '555-1003'),
-  ('00000000-0000-0000-0000-000000000004', 'Casey', 'Nguyen', 'Eastview High School', 'casey.nguyen@eastview.edu', 2028, '555-1004'),
-  ('00000000-0000-0000-0000-000000000005', 'Riley', 'Johnson', 'Northfield High School', 'riley.johnson@northfield.edu', 2027, '555-1005'),
-  ('00000000-0000-0000-0000-000000000006', 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006')
-on conflict (student_id) do nothing;
+  ('00000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000001', 'Taylor', 'Morgan', 'Eastview High School', 'taylor.morgan@eastview.edu', 2027, '555-1001'),
+  ('00000000-0000-0000-0000-000000000002', null, 'Alex', 'Chen', 'Eastview High School', 'alex.chen@eastview.edu', 2027, '555-1002'),
+  ('00000000-0000-0000-0000-000000000003', null, 'Jordan', 'Lee', 'Lakewood Academy', 'jordan.lee@lakewood.edu', 2028, '555-1003'),
+  ('00000000-0000-0000-0000-000000000004', null, 'Casey', 'Nguyen', 'Eastview High School', 'casey.nguyen@eastview.edu', 2028, '555-1004'),
+  ('00000000-0000-0000-0000-000000000005', null, 'Riley', 'Johnson', 'Northfield High School', 'riley.johnson@northfield.edu', 2027, '555-1005'),
+  ('00000000-0000-0000-0000-000000000006', null, 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006')
+on conflict (student_id) do update
+set auth_user_id = excluded.auth_user_id;
 
 insert into Judges (
-  judge_id, first_name, last_name, school, email, certification, phone
+  judge_id, auth_user_id, first_name, last_name, school, email, certification, phone
 ) values
-  ('10000000-0000-0000-0000-000000000001', 'Mia', 'Rodriguez', 'Independent', 'mia.rodriguez@judges.org', 'NSDA Gold', '555-2001'),
-  ('10000000-0000-0000-0000-000000000002', 'Noah', 'Kim', 'Northfield High School', 'noah.kim@northfield.edu', 'NSDA Silver', '555-2002'),
-  ('10000000-0000-0000-0000-000000000003', 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003')
-on conflict (judge_id) do nothing;
+  ('10000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000002', 'Mia', 'Rodriguez', 'Independent', 'mia.rodriguez@judges.org', 'NSDA Gold', '555-2001'),
+  ('10000000-0000-0000-0000-000000000002', null, 'Noah', 'Kim', 'Northfield High School', 'noah.kim@northfield.edu', 'NSDA Silver', '555-2002'),
+  ('10000000-0000-0000-0000-000000000003', null, 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003')
+on conflict (judge_id) do update
+set auth_user_id = excluded.auth_user_id;
 
 insert into Coaches (
-  coach_id, first_name, last_name, school, email, phone, years_experience
+  coach_id, auth_user_id, first_name, last_name, school, email, phone, years_experience
 ) values
-  ('20000000-0000-0000-0000-000000000001', 'Renee', 'Davis', 'Eastview High School', 'renee.davis@eastview.edu', '555-3001', 9),
-  ('20000000-0000-0000-0000-000000000002', 'Evan', 'Brooks', 'Lakewood Academy', 'evan.brooks@lakewood.edu', '555-3002', 6),
-  ('20000000-0000-0000-0000-000000000003', 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 11)
-on conflict (coach_id) do nothing;
+  ('20000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000003', 'Renee', 'Davis', 'Eastview High School', 'renee.davis@eastview.edu', '555-3001', 9),
+  ('20000000-0000-0000-0000-000000000002', null, 'Evan', 'Brooks', 'Lakewood Academy', 'evan.brooks@lakewood.edu', '555-3002', 6),
+  ('20000000-0000-0000-0000-000000000003', null, 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 11)
+on conflict (coach_id) do update
+set auth_user_id = excluded.auth_user_id;
 
 insert into Tournament (
   tournament_id, name, host_school, location, start_date, end_date, status, created_by_admin_id
@@ -346,17 +418,28 @@ on conflict (image_id) do nothing;
 -- Supabase auth + RLS policies
 -- ------------------------------------------------------------
 
-alter table Students enable row level security;
-alter table Judges enable row level security;
-alter table Coaches enable row level security;
-alter table Administrator enable row level security;
-alter table Debate enable row level security;
-alter table Tournament enable row level security;
-alter table Tournament_Round enable row level security;
-alter table S_Participation enable row level security;
-alter table J_Participation enable row level security;
-alter table C_Participation enable row level security;
-alter table Images enable row level security;
+do $$
+declare
+  target_table regclass;
+begin
+  foreach target_table in array array[
+    'Students'::regclass,
+    'Judges'::regclass,
+    'Coaches'::regclass,
+    'Administrator'::regclass,
+    'Debate'::regclass,
+    'Tournament'::regclass,
+    'Tournament_Round'::regclass,
+    'S_Participation'::regclass,
+    'J_Participation'::regclass,
+    'C_Participation'::regclass,
+    'Images'::regclass
+  ]
+  loop
+    execute format('alter table %s enable row level security', target_table);
+  end loop;
+end;
+$$;
 
 -- Tables without policies below default to deny-all until explicit policies are added.
 
