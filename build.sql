@@ -38,8 +38,7 @@ begin
     confirmation_token,
     email_change,
     email_change_token_new,
-    recovery_token,
-    confirmed_at
+    recovery_token
   ) values (
     '00000000-0000-0000-0000-000000000000',
     seed_user_id,
@@ -55,8 +54,7 @@ begin
     '',
     '',
     '',
-    '',
-    now()
+    ''
   )
   on conflict (id) do update
   set email = excluded.email,
@@ -64,8 +62,7 @@ begin
       email_confirmed_at = excluded.email_confirmed_at,
       raw_app_meta_data = excluded.raw_app_meta_data,
       raw_user_meta_data = excluded.raw_user_meta_data,
-      updated_at = now(),
-      confirmed_at = excluded.confirmed_at;
+      updated_at = now();
 
   insert into auth.identities (
     id,
