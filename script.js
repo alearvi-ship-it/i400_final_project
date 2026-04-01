@@ -211,11 +211,14 @@ async function handleLoginForm() {
         return;
     }
 
-    const { data } = await supabaseClient.auth.getSession();
-    if (data?.session) {
+    const currentUser = await requireAuthenticatedUser();
+    if (currentUser.user) {
         window.location.href = "debates.html";
         return;
     }
+
+    // Clear stale local tokens so the page does not keep bouncing between routes.
+    await supabaseClient.auth.signOut();
 
     let isSignUp = false;
 
