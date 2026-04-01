@@ -54,7 +54,7 @@
                     <p class="section-copy">Use your team credentials to continue to practice plans, pairings, and feedback.</p>
                 </div>
 
-                <form class="stack" action="debates.html" method="get">
+                <form class="stack" data-login-form action="#" method="post">
                     <label class="field">
                         <span>Email</span>
                         <input type="email" name="email" placeholder="captain@debatehub.org" autocomplete="email" required>
@@ -77,6 +77,7 @@
                     </div>
 
                     <button class="primary-button" type="submit">Enter team portal</button>
+                    <p data-auth-message aria-live="polite"></p>
                 </form>
 
                 <div class="divider" aria-hidden="true"></div>
@@ -89,6 +90,8 @@
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

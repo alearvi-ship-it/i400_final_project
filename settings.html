@@ -39,7 +39,7 @@
                 <button class="primary-button" type="submit" form="settings-form">Save changes</button>
             </div>
 
-            <form id="settings-form" class="settings-grid" action="#" method="post">
+            <form id="settings-form" class="settings-grid" data-settings-form action="#" method="post">
                 <section class="panel-card section-card">
                     <div class="section-heading">
                         <h3>Personal info</h3>
@@ -152,8 +152,14 @@
                         <span>Require verification for new devices</span>
                     </label>
                 </section>
+
+                <p data-settings-message aria-live="polite"></p>
             </form>
         </main>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

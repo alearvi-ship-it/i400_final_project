@@ -15,6 +15,7 @@ $$;
 
 create table if not exists Students (
   student_id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   first_name text not null,
   last_name text not null,
   school text,
@@ -340,3 +341,39 @@ insert into Images (
   ('a0000000-0000-0000-0000-000000000007', 'Coach Priya profile picture', '/images/profiles/coaches/priya-shah.jpg', 'profile-images', 'coaches/priya-shah.jpg', 'image/jpeg', null, null, '20000000-0000-0000-0000-000000000003', null),
   ('a0000000-0000-0000-0000-000000000008', 'Admin Morgan profile picture', '/images/profiles/admins/morgan-reed.jpg', 'profile-images', 'admins/morgan-reed.jpg', 'image/jpeg', null, null, null, '30000000-0000-0000-0000-000000000002')
 on conflict (image_id) do nothing;
+
+-- ------------------------------------------------------------
+-- Supabase auth + RLS policies
+-- ------------------------------------------------------------
+
+alter table Students enable row level security;
+alter table Debate enable row level security;
+
+drop policy if exists students_select_own on Students;
+create policy students_select_own
+on Students
+for select
+to authenticated
+using (auth.uid() = auth_user_id);
+
+drop policy if exists students_insert_own on Students;
+create policy students_insert_own
+on Students
+for insert
+to authenticated
+with check (auth.uid() = auth_user_id);
+
+drop policy if exists students_update_own on Students;
+create policy students_update_own
+on Students
+for update
+to authenticated
+using (auth.uid() = auth_user_id)
+with check (auth.uid() = auth_user_id);
+
+drop policy if exists debates_select_authenticated on Debate;
+create policy debates_select_authenticated
+on Debate
+for select
+to authenticated
+using (true);
