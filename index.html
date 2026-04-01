@@ -54,6 +54,11 @@
                     <p class="section-copy" data-login-subheading>Use your team credentials to continue to practice plans, pairings, and feedback.</p>
                 </div>
 
+                <div class="auth-tabs" role="tablist" aria-label="Authentication options">
+                    <button class="auth-tab is-active" type="button" role="tab" aria-selected="true" data-auth-tab="login">Sign in</button>
+                    <button class="auth-tab" type="button" role="tab" aria-selected="false" data-auth-tab="signup">Create account</button>
+                </div>
+
                 <form class="stack" data-login-form action="#" method="post">
                     <label class="field">
                         <span>Email</span>
@@ -65,12 +70,12 @@
                         <div class="password-row">
                             <input id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
                             <button class="ghost-button" type="button" data-toggle-password aria-controls="password" aria-label="Show password">Show</button>
-
-                                            <label class="field" data-confirm-field hidden>
-                                                <span>Confirm password</span>
-                                                <input id="confirm-password" type="password" name="confirm-password" placeholder="Re-enter your password" autocomplete="new-password">
-                                            </label>
                         </div>
+                    </label>
+
+                    <label class="field" data-confirm-field hidden>
+                        <span>Confirm password</span>
+                        <input id="confirm-password" type="password" name="confirm-password" placeholder="Re-enter your password" autocomplete="new-password">
                     </label>
 
                     <div class="inline-row">
@@ -89,7 +94,7 @@
 
                 <div class="secondary-actions">
                     <button class="secondary-button" type="button">Sign in with school account</button>
-                    <p>New to the team? <button class="text-link" type="button" data-create-account>Create account</button>.</p>
+                    <p>Choose a tab above to sign in or create a new account.</p>
                 </div>
             </div>
         </main>

@@ -248,6 +248,39 @@ h3 {
     margin-top: 28px;
 }
 
+.auth-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 8px;
+    margin-top: 24px;
+    border-radius: 999px;
+    background: rgba(36, 59, 83, 0.08);
+}
+
+.auth-tab {
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 18px;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.auth-tab.is-active {
+    background: linear-gradient(135deg, var(--accent-crimson), #b03c4f);
+    color: white;
+    box-shadow: 0 10px 22px rgba(143, 36, 53, 0.2);
+}
+
+.auth-tab:focus-visible {
+    outline: 3px solid rgba(143, 36, 53, 0.18);
+    outline-offset: 2px;
+}
+
 .field {
     display: grid;
     gap: 10px;

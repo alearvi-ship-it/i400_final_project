@@ -91,6 +91,11 @@ function getInitials(fullName) {
 async function handleLoginForm() {
     const loginForm = document.querySelector("[data-login-form]");
     const messageEl = document.querySelector("[data-auth-message]");
+    const headingEl = document.querySelector("[data-login-heading]");
+    const subheadingEl = document.querySelector("[data-login-subheading]");
+    const confirmField = document.querySelector("[data-confirm-field]");
+    const submitBtn = loginForm?.querySelector('button[type="submit"]');
+    const authTabs = document.querySelectorAll("[data-auth-tab]");
 
     if (!loginForm) {
         return;
@@ -107,56 +112,50 @@ async function handleLoginForm() {
         return;
     }
 
-    loginForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-
-        const email = loginForm.querySelector('input[name="email"]')?.value?.trim();
-        const password = loginForm.querySelector('input[name="password"]')?.value || "";
-
-        if (!email || !password) {
-            setMessage(messageEl, "Email and password are required.", true);
-            return;
-        }
-
-        setMessage(messageEl, "Signing in...", false);
-
-        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-
-        if (error) {
-            setMessage(messageEl, error.message, true);
-            return;
-        }
-
-        setMessage(messageEl, "Signed in. Redirecting...", false);
-        window.location.href = "debates.html";
-    });
     let isSignUp = false;
-
-    const headingEl = document.querySelector("[data-login-heading]");
-    const subheadingEl = document.querySelector("[data-login-subheading]");
-    const confirmField = document.querySelector("[data-confirm-field]");
-    const submitBtn = loginForm.querySelector('button[type="submit"]');
-    const createAccountBtn = document.querySelector("[data-create-account]");
 
     function setMode(signUp) {
         isSignUp = signUp;
-        if (headingEl) headingEl.textContent = signUp ? "Create an account" : "Welcome back";
-        if (subheadingEl) subheadingEl.textContent = signUp
+        if (headingEl) {
+            headingEl.textContent = signUp ? "Create an account" : "Welcome back";
+        }
+        if (subheadingEl) {
+            subheadingEl.textContent = signUp
             ? "Enter your email and choose a password to join the team portal."
             : "Use your team credentials to continue to practice plans, pairings, and feedback.";
+        }
         if (confirmField) {
             confirmField.hidden = !signUp;
             const confirmInput = confirmField.querySelector("input");
-            if (confirmInput) confirmInput.required = signUp;
+            if (confirmInput) {
+                confirmInput.required = signUp;
+                if (!signUp) {
+                    confirmInput.value = "";
+                }
+            }
         }
-        if (submitBtn) submitBtn.textContent = signUp ? "Create account" : "Enter team portal";
-        if (createAccountBtn) createAccountBtn.textContent = signUp ? "Back to login" : "Create account";
+        const passwordInput = loginForm.querySelector('input[name="password"]');
+        if (passwordInput) {
+            passwordInput.autocomplete = signUp ? "new-password" : "current-password";
+        }
+        if (submitBtn) {
+            submitBtn.textContent = signUp ? "Create account" : "Enter team portal";
+        }
+        authTabs.forEach((tab) => {
+            const active = tab.getAttribute("data-auth-tab") === (signUp ? "signup" : "login");
+            tab.classList.toggle("is-active", active);
+            tab.setAttribute("aria-selected", active ? "true" : "false");
+        });
         setMessage(messageEl, "", false);
     }
 
-    if (createAccountBtn) {
-        createAccountBtn.addEventListener("click", () => setMode(!isSignUp));
-    }
+    authTabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            setMode(tab.getAttribute("data-auth-tab") === "signup");
+        });
+    });
+
+    setMode(false);
 
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
