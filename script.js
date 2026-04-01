@@ -223,14 +223,14 @@ async function preloadSettingsForm() {
 }
 
 async function handleSettingsForm() {
-    await requireAuth();
-
     const settingsForm = document.querySelector("[data-settings-form]");
     const messageEl = document.querySelector("[data-settings-message]");
 
     if (!settingsForm) {
         return;
     }
+
+    await requireAuth();
 
     if (!supabaseClient) {
         setMessage(messageEl, "Supabase is not configured yet. Update supabase-config.js placeholders.", true);
@@ -517,8 +517,6 @@ function updateDebatesSidebar(student, records) {
 }
 
 async function handleDebatesPage() {
-    await requireAuth();
-
     const upcomingList = document.querySelector("[data-upcoming-list]");
     const pastList = document.querySelector("[data-past-list]");
     const upcomingCount = document.querySelector("[data-upcoming-count]");
@@ -528,6 +526,8 @@ async function handleDebatesPage() {
     if (!upcomingList || !pastList) {
         return;
     }
+
+    await requireAuth();
 
     if (!supabaseClient) {
         return;
