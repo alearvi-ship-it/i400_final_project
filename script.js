@@ -130,6 +130,72 @@ async function handleLoginForm() {
         setMessage(messageEl, "Signed in. Redirecting...", false);
         window.location.href = "debates.html";
     });
+    let isSignUp = false;
+
+    const headingEl = document.querySelector("[data-login-heading]");
+    const subheadingEl = document.querySelector("[data-login-subheading]");
+    const confirmField = document.querySelector("[data-confirm-field]");
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const createAccountBtn = document.querySelector("[data-create-account]");
+
+    function setMode(signUp) {
+        isSignUp = signUp;
+        if (headingEl) headingEl.textContent = signUp ? "Create an account" : "Welcome back";
+        if (subheadingEl) subheadingEl.textContent = signUp
+            ? "Enter your email and choose a password to join the team portal."
+            : "Use your team credentials to continue to practice plans, pairings, and feedback.";
+        if (confirmField) {
+            confirmField.hidden = !signUp;
+            const confirmInput = confirmField.querySelector("input");
+            if (confirmInput) confirmInput.required = signUp;
+        }
+        if (submitBtn) submitBtn.textContent = signUp ? "Create account" : "Enter team portal";
+        if (createAccountBtn) createAccountBtn.textContent = signUp ? "Back to login" : "Create account";
+        setMessage(messageEl, "", false);
+    }
+
+    if (createAccountBtn) {
+        createAccountBtn.addEventListener("click", () => setMode(!isSignUp));
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const email = loginForm.querySelector('input[name="email"]')?.value?.trim();
+        const password = loginForm.querySelector('input[name="password"]')?.value || "";
+
+        if (!email || !password) {
+            setMessage(messageEl, "Email and password are required.", true);
+            return;
+        }
+
+        if (isSignUp) {
+            const confirmPassword = loginForm.querySelector('input[name="confirm-password"]')?.value || "";
+            if (password !== confirmPassword) {
+                setMessage(messageEl, "Passwords do not match.", true);
+                return;
+            }
+
+            setMessage(messageEl, "Creating account...", false);
+            const { error } = await supabaseClient.auth.signUp({ email, password });
+            if (error) {
+                setMessage(messageEl, error.message, true);
+                return;
+            }
+            setMessage(messageEl, "Account created! Check your email to confirm, then sign in.", false);
+            setMode(false);
+            return;
+        }
+
+        setMessage(messageEl, "Signing in...", false);
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) {
+            setMessage(messageEl, error.message, true);
+            return;
+        }
+        setMessage(messageEl, "Signed in. Redirecting...", false);
+        window.location.href = "debates.html";
+    });
 }
 
 function splitName(fullName) {
