@@ -73,12 +73,16 @@ const supabaseClient = getSupabaseClient();
 
 async function requireAuth() {
     if (!supabaseClient) {
-        return;
+        return false;
     }
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
+
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data?.user) {
         window.location.replace("index.html");
+        return false;
     }
+
+    return true;
 }
 
 function escapeHtml(value) {
@@ -424,7 +428,9 @@ async function handleSettingsForm() {
         return;
     }
 
-    await requireAuth();
+    if (!(await requireAuth())) {
+        return;
+    }
 
     if (!supabaseClient) {
         setMessage(messageEl, "Account services are not available right now. Please try again later.", true);
@@ -733,7 +739,9 @@ async function handleDebatesPage() {
         return;
     }
 
-    await requireAuth();
+    if (!(await requireAuth())) {
+        return;
+    }
 
     if (!supabaseClient) {
         return;
