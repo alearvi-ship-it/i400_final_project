@@ -18,16 +18,24 @@ Static frontend pages for a debate team website, now wired for Supabase auth/dat
 	- SUPABASE_URL
 	- SUPABASE_ANON_KEY
 
-## Render setup
+## Render setup (Web Service)
 
-This repo includes render.yaml configured as a Render Static Site.
+This repo includes render.yaml configured as a Render Node Web Service so npm install/npm start succeed.
 
 1. Push this repo to GitHub.
-2. In Render, create a new Static Site from the repo.
-3. Render should auto-detect render.yaml.
-4. Optional: if you add a separate API service on Render later, set RENDER_API_BASE_URL in:
-	- .env.example (for documentation)
-	- supabase-config.js (for local/browser runtime)
+2. In Render, create a new Web Service from the repo.
+3. Render should auto-detect render.yaml and use:
+	- buildCommand: npm install
+	- startCommand: npm start
+4. Set environment variables in Render:
+	- SUPABASE_URL
+	- SUPABASE_ANON_KEY
+	- Optional: RENDER_API_BASE_URL
+
+Notes:
+
+- server.js serves static files and also serves /supabase-config.js from Render environment variables.
+- The local supabase-config.js file is optional for local static testing.
 
 ## Local run
 

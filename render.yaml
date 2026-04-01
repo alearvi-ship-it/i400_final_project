@@ -1,11 +1,15 @@
 services:
-  - type: static_site
+  - type: web
     name: i400-final-project
-    env: static
-    buildCommand: ""
-    staticPublishPath: .
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
     pullRequestPreviewsEnabled: true
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    envVars:
+      - key: SUPABASE_URL
+        value: https://YOUR_PROJECT_REF.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: YOUR_SUPABASE_ANON_KEY
+      - key: RENDER_API_BASE_URL
+        value: https://YOUR_RENDER_SERVICE.onrender.com
