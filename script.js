@@ -203,7 +203,7 @@ async function handleLoginForm() {
     }
 
     if (!supabaseClient) {
-        setMessage(messageEl, "Supabase is not configured yet. Update supabase-config.js placeholders.", true);
+        setMessage(messageEl, "Account services are not available right now. Please try again later.", true);
         return;
     }
 
@@ -333,7 +333,7 @@ function splitName(fullName) {
 
 async function requireAuthenticatedUser() {
     if (!supabaseClient) {
-        return { user: null, error: new Error("Supabase client is not configured.") };
+        return { user: null, error: new Error("Account services are not available right now.") };
     }
 
     const { data, error } = await supabaseClient.auth.getUser();
@@ -427,7 +427,7 @@ async function handleSettingsForm() {
     await requireAuth();
 
     if (!supabaseClient) {
-        setMessage(messageEl, "Supabase is not configured yet. Update supabase-config.js placeholders.", true);
+        setMessage(messageEl, "Account services are not available right now. Please try again later.", true);
         return;
     }
 
@@ -764,7 +764,7 @@ async function handleDebatesPage() {
         if (pastCount) {
             pastCount.textContent = "0";
         }
-        setMessage(messageEl, "No matching profile record found in Supabase.", true);
+        setMessage(messageEl, "No matching profile record was found for this account.", true);
         return;
     }
 
@@ -785,7 +785,7 @@ async function handleDebatesPage() {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    setMessage(messageEl, "Loading debates from Supabase...", false);
+    setMessage(messageEl, "Loading your debates...", false);
 
     const participationResponse = await supabaseClient
         .from(TABLES.studentParticipation)
