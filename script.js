@@ -126,6 +126,7 @@ async function handleLoginForm() {
         }
         if (confirmField) {
             confirmField.hidden = !signUp;
+            confirmField.setAttribute("aria-hidden", signUp ? "false" : "true");
             const confirmInput = confirmField.querySelector("input");
             if (confirmInput) {
                 confirmInput.required = signUp;
