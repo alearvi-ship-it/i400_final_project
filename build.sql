@@ -321,13 +321,15 @@ begin
 end;
 $$;
 
-create or replace function public.log_admin_change(id_column text, entity_name text)
+create or replace function public.log_admin_change()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
+  id_column text := TG_ARGV[0];
+  entity_name text := TG_ARGV[1];
   actor record;
   old_json jsonb := case when TG_OP in ('UPDATE', 'DELETE') then to_jsonb(OLD) else null end;
   new_json jsonb := case when TG_OP in ('UPDATE', 'INSERT') then to_jsonb(NEW) else null end;

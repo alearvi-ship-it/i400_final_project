@@ -317,7 +317,12 @@ async function getProfileByType(user, accountType) {
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
+    if (byAuthUser.error) {
+        console.error(`[getProfileByType] Query by auth_user_id failed for ${accountType}:`, byAuthUser.error);
+    }
+
     if (byAuthUser.data) {
+        console.debug(`[getProfileByType] Found ${accountType} profile by auth_user_id:`, Object.keys(byAuthUser.data));
         return { ...byAuthUser.data, accountType: profileConfig.accountType };
     }
 
@@ -331,6 +336,14 @@ async function getProfileByType(user, accountType) {
         .eq("email", user.email)
         .maybeSingle();
 
+    if (byEmail.error) {
+        console.error(`[getProfileByType] Query by email failed for ${accountType}:`, byEmail.error);
+    }
+
+    if (byEmail.data) {
+        console.debug(`[getProfileByType] Found ${accountType} profile by email:`, Object.keys(byEmail.data));
+    }
+
     return byEmail.data ? { ...byEmail.data, accountType: profileConfig.accountType } : null;
 }
 
@@ -341,13 +354,17 @@ async function getCurrentProfile(user) {
         ...Object.keys(PROFILE_CONFIG).filter((accountType) => accountType !== preferredType)
     ];
 
+    console.debug(`[getCurrentProfile] Looking up profile for user ${user?.email} (preferred type: ${preferredType})`);
+
     for (const accountType of lookupOrder) {
         const profile = await getProfileByType(user, accountType);
         if (profile) {
+            console.debug(`[getCurrentProfile] Successfully found profile as ${accountType}`);
             return profile;
         }
     }
 
+    console.warn(`[getCurrentProfile] No profile found for user ${user?.email} after checking all types`);
     return null;
 }
 
@@ -1266,12 +1283,14 @@ async function handleUserHistoryPage() {
 
         const ownAccountType = normalizeAccountType(ownProfile.accountType);
         const ownConfig = PROFILE_CONFIG[ownAccountType];
+        console.debug(`[handleUserHistoryPage] Profile data keys:`, Object.keys(ownProfile), `Account type config expects ID column: ${ownConfig.idColumn}`);
         targetType = normalizeRoleType(ownAccountType);
         targetId = sanitizeUuid(ownProfile[ownConfig.idColumn] || "");
         targetName = getDisplayName(ownProfile, user);
     }
 
     if (!targetId) {
+        console.error(`[handleUserHistoryPage] Failed to extract ID. Profile: ${JSON.stringify(ownProfile)}, Config ID column: ${ownConfig.idColumn}`);
         resultsRoot.replaceChildren(createEmptyState("Account details could not be determined."));
         setMessage(messageEl, "Could not resolve profile identifier.", true);
         return;
