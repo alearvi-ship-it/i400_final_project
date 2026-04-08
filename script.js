@@ -307,6 +307,37 @@ function getDisplayName(profile, user) {
     return fullName || profile?.email || user?.email || `${getRoleLabel(profile?.accountType || user?.user_metadata?.account_type)} Account`;
 }
 
+function withoutEmergencyContactColumn(selectColumns) {
+    return String(selectColumns || "")
+        .split(",")
+        .map((column) => column.trim())
+        .filter((column) => column && column !== "emergency_contact")
+        .join(",");
+}
+
+async function runProfileSingleQuery(profileConfig, builder) {
+    const primaryResponse = await builder(profileConfig.selectColumns);
+    if (!primaryResponse?.error) {
+        return primaryResponse;
+    }
+
+    const missingColumnError = String(primaryResponse.error?.message || "").toLowerCase();
+    if (!missingColumnError.includes("emergency_contact") && !missingColumnError.includes("column")) {
+        return primaryResponse;
+    }
+
+    const fallbackColumns = withoutEmergencyContactColumn(profileConfig.selectColumns);
+    if (!fallbackColumns) {
+        return primaryResponse;
+    }
+
+    const fallbackResponse = await builder(fallbackColumns);
+    if (!fallbackResponse.error && fallbackResponse.data) {
+        fallbackResponse.data = { ...fallbackResponse.data, emergency_contact: null };
+    }
+    return fallbackResponse;
+}
+
 async function getProfileByType(user, accountType) {
     if (!supabaseClient || !user) {
         return null;
@@ -317,11 +348,13 @@ async function getProfileByType(user, accountType) {
         return null;
     }
 
-    const byAuthUser = await supabaseClient
-        .from(profileConfig.table)
-        .select(profileConfig.selectColumns)
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
+    const byAuthUser = await runProfileSingleQuery(profileConfig, (columns) => {
+        return supabaseClient
+            .from(profileConfig.table)
+            .select(columns)
+            .eq("auth_user_id", user.id)
+            .maybeSingle();
+    });
 
     if (byAuthUser.error) {
         console.error(`[getProfileByType] Query by auth_user_id failed for ${accountType}:`, byAuthUser.error);
@@ -336,11 +369,13 @@ async function getProfileByType(user, accountType) {
         return null;
     }
 
-    const byEmail = await supabaseClient
-        .from(profileConfig.table)
-        .select(profileConfig.selectColumns)
-        .eq("email", user.email)
-        .maybeSingle();
+    const byEmail = await runProfileSingleQuery(profileConfig, (columns) => {
+        return supabaseClient
+            .from(profileConfig.table)
+            .select(columns)
+            .eq("email", user.email)
+            .maybeSingle();
+    });
 
     if (byEmail.error) {
         console.error(`[getProfileByType] Query by email failed for ${accountType}:`, byEmail.error);
@@ -384,11 +419,17 @@ async function getProfileByIdentifier(accountType, accountId) {
         return null;
     }
 
-    const response = await supabaseClient
-        .from(profileConfig.table)
-        .select(profileConfig.selectColumns)
-        .eq(profileConfig.idColumn, accountId)
-        .maybeSingle();
+    const response = await runProfileSingleQuery(profileConfig, (columns) => {
+        return supabaseClient
+            .from(profileConfig.table)
+            .select(columns)
+            .eq(profileConfig.idColumn, accountId)
+            .maybeSingle();
+    });
+
+    if (response.error) {
+        console.error(`[getProfileByIdentifier] Query failed for ${accountType}/${accountId}:`, response.error);
+    }
 
     return response.data ? { ...response.data, accountType: profileConfig.accountType } : null;
 }
@@ -903,24 +944,25 @@ function updateSettingsCompletion(profile, user, viewingOtherProfile = false) {
     const totalCount = fields.length;
     const percentComplete = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
     const missingFields = fields.filter((field) => !field.complete).map((field) => field.label);
+    const fieldNoun = totalCount === 1 ? "field" : "fields";
 
     progressFill.style.width = `${percentComplete}%`;
 
     if (!missingFields.length) {
-        progressCopy.textContent = `All ${totalCount} tracked profile fields are complete.`;
+        progressCopy.textContent = `All ${totalCount} required profile ${fieldNoun} are complete.`;
         return;
     }
 
     const possessiveLabel = viewingOtherProfile ? "this profile's" : "your";
 
     if (missingFields.length === 1) {
-        progressCopy.textContent = `${completedCount} of ${totalCount} tracked profile fields are complete. Add ${possessiveLabel} ${missingFields[0]}.`;
+        progressCopy.textContent = `${completedCount} of ${totalCount} required profile ${fieldNoun} are complete. Add ${possessiveLabel} ${missingFields[0]}.`;
         return;
     }
 
     const finalField = missingFields[missingFields.length - 1];
     const leadingFields = missingFields.slice(0, -1).join(", ");
-    progressCopy.textContent = `${completedCount} of ${totalCount} tracked profile fields are complete. Add ${possessiveLabel} ${leadingFields} and ${finalField}.`;
+    progressCopy.textContent = `${completedCount} of ${totalCount} required profile ${fieldNoun} are complete. Add ${possessiveLabel} ${leadingFields} and ${finalField}.`;
 }
 
 async function preloadSettingsForm() {
