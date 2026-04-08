@@ -193,7 +193,7 @@ function sanitizePhone(value) {
 
 function sanitizeUuid(value) {
     const normalized = sanitizeText(value, 64);
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
         ? normalized
         : "";
 }
@@ -618,7 +618,7 @@ function renderNetworkCard(profile, isAdminMode) {
 
     const historyLink = isAdminMode && profile.can_view_history
         ? `<a class="ghost-button profile-history-link" href="user-history.html?type=${encodeURIComponent(roleType)}&id=${encodeURIComponent(profile.account_id)}&name=${encodeURIComponent(fullName)}">View debate history</a>`
-        : "";
+        : `<button class="ghost-button profile-history-link" type="button" disabled aria-disabled="true" title="Only administrators can view debate history.">View debate history</button>`;
 
     article.innerHTML = `
         <div class="directory-card-header">
