@@ -2,11 +2,19 @@
 
 Static frontend pages for a debate team website, now wired for Supabase auth/data and Render deployment.
 
+## Security hardening
+
+- Client-side input sanitization and validation are applied before Supabase auth, query, or RPC calls.
+- Server responses include baseline security headers (CSP, no-sniff, frame protection, permissions policy).
+- Database-side validation is enforced in admin RPCs for debate setup values.
+- Admin-triggered profile and debate assignment changes are automatically recorded in `Admin_Change_Log`.
+
 ## Pages
 
 - index.html: login page (Supabase email/password sign-in)
 - profiles.html: admin-only profile directory (search students/judges/coaches)
-- user-history.html: admin-only page for viewing a selected user's debate history
+- policy-setup.html: admin-only policy debate setup page (students/teams/stances/judges/coaches)
+- user-history.html: debate history page (self-view for users; admins can view non-admin users)
 - debates.html: authenticated debates dashboard (reads Debate rows)
 - settings.html: authenticated profile settings (upserts Students row)
 

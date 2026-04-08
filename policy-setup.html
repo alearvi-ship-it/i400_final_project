@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DebateHub | Policy Debate Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page page-policy-setup" data-policy-setup>
+    <div class="debates-shell">
+        <aside class="debates-sidebar">
+            <div class="sidebar-top">
+                <p class="eyebrow">DebateHub</p>
+                <div class="user-badge">
+                    <span class="user-avatar" data-policy-admin-avatar>DH</span>
+                    <div>
+                        <p class="user-name" data-policy-admin-name>Loading admin</p>
+                        <p class="user-role" data-policy-admin-role>Administrator</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-card">
+                    <p class="hero-card-title">Policy round builder</p>
+                    <p class="hero-card-body">Set teams, assign stances, build a judge panel, and attach team coaches in one workflow.</p>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" aria-label="Site">
+                <a class="sidebar-nav-item" href="profiles.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile directory
+                </a>
+                <a class="sidebar-nav-item active" href="policy-setup.html" aria-current="page">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>
+                    Policy setup
+                </a>
+                <a class="sidebar-nav-item" href="debates.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    My Debates
+                </a>
+                <a class="sidebar-nav-item" href="settings.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile settings
+                </a>
+                <a class="sidebar-nav-item sidebar-nav-signout" data-signout href="index.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                </a>
+            </nav>
+        </aside>
+
+        <main class="debates-main">
+            <header class="debates-header directory-header">
+                <div>
+                    <p class="section-kicker">Administrator</p>
+                    <h2>Policy Debate Setup</h2>
+                    <p class="section-copy">Create a scheduled policy debate and assign students, stances, judge panel members, and coaches.</p>
+                </div>
+                <p class="status-text" data-policy-message aria-live="polite"></p>
+            </header>
+
+            <form class="policy-form" data-policy-form action="#" method="post">
+                <section class="panel-card section-card policy-section">
+                    <div class="section-heading">
+                        <h3>Debate details</h3>
+                        <p>Choose where and when this policy round will happen.</p>
+                    </div>
+                    <div class="grid-two">
+                        <label class="field">
+                            <span>Tournament (optional)</span>
+                            <select name="tournament_id" data-policy-tournament>
+                                <option value="">No tournament link</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>Round (optional)</span>
+                            <select name="tournament_round_id" data-policy-round>
+                                <option value="">No round link</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>Debate date</span>
+                            <input type="date" name="debate_date" required>
+                        </label>
+                        <label class="field">
+                            <span>Debate time</span>
+                            <input type="time" name="debate_time">
+                        </label>
+                    </div>
+                    <div class="grid-two">
+                        <label class="field">
+                            <span>Room</span>
+                            <input type="text" name="room" placeholder="A104">
+                        </label>
+                        <label class="field">
+                            <span>Topic / Resolution</span>
+                            <input type="text" name="topic" placeholder="Resolved: ...">
+                        </label>
+                        <label class="field">
+                            <span>Team 1 name</span>
+                            <input type="text" name="team_a_name" placeholder="Eastview A">
+                        </label>
+                        <label class="field">
+                            <span>Team 2 name</span>
+                            <input type="text" name="team_b_name" placeholder="Lakewood A">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-card section-card policy-section">
+                    <div class="policy-section-head">
+                        <div class="section-heading">
+                            <h3>Student assignments</h3>
+                            <p>Assign each student to a team and set their stance.</p>
+                        </div>
+                        <button class="ghost-button" type="button" data-add-student-row>Add student</button>
+                    </div>
+                    <div class="policy-rows" data-student-rows></div>
+                </section>
+
+                <section class="panel-card section-card policy-section">
+                    <div class="policy-section-head">
+                        <div class="section-heading">
+                            <h3>Judge panel</h3>
+                            <p>Assign judges and panel numbers.</p>
+                        </div>
+                        <button class="ghost-button" type="button" data-add-judge-row>Add judge</button>
+                    </div>
+                    <div class="policy-rows" data-judge-rows></div>
+                </section>
+
+                <section class="panel-card section-card policy-section">
+                    <div class="policy-section-head">
+                        <div class="section-heading">
+                            <h3>Coach assignments</h3>
+                            <p>Attach coaches to team numbers with optional prep notes.</p>
+                        </div>
+                        <button class="ghost-button" type="button" data-add-coach-row>Add coach</button>
+                    </div>
+                    <div class="policy-rows" data-coach-rows></div>
+                </section>
+
+                <div class="policy-actions">
+                    <button class="primary-button" type="submit">Create policy debate</button>
+                    <button class="ghost-button" type="button" data-reset-policy-form>Reset</button>
+                </div>
+            </form>
+        </main>
+    </div>
+
+    <template id="student-row-template">
+        <div class="policy-row" data-policy-row>
+            <label class="field">
+                <span>Student</span>
+                <select data-student-id required></select>
+            </label>
+            <label class="field">
+                <span>Team</span>
+                <input type="number" min="1" value="1" data-team-number required>
+            </label>
+            <label class="field">
+                <span>Stance</span>
+                <select data-debate-stance>
+                    <option value="Affirmative">Affirmative</option>
+                    <option value="Negative">Negative</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Speaking order</span>
+                <input type="number" min="1" data-speaking-order>
+            </label>
+            <label class="field inline-checkbox-field">
+                <span>Captain</span>
+                <input type="checkbox" data-is-captain>
+            </label>
+            <button class="ghost-button policy-remove" type="button" data-remove-row>Remove</button>
+        </div>
+    </template>
+
+    <template id="judge-row-template">
+        <div class="policy-row" data-policy-row>
+            <label class="field">
+                <span>Judge</span>
+                <select data-judge-id required></select>
+            </label>
+            <label class="field">
+                <span>Panel #</span>
+                <input type="number" min="1" value="1" data-panel-number>
+            </label>
+            <button class="ghost-button policy-remove" type="button" data-remove-row>Remove</button>
+        </div>
+    </template>
+
+    <template id="coach-row-template">
+        <div class="policy-row" data-policy-row>
+            <label class="field">
+                <span>Coach</span>
+                <select data-coach-id required></select>
+            </label>
+            <label class="field">
+                <span>Team #</span>
+                <input type="number" min="1" value="1" data-mentored-team-number>
+            </label>
+            <label class="field policy-notes-field">
+                <span>Notes (optional)</span>
+                <input type="text" data-coach-notes placeholder="Prep emphasis for this team">
+            </label>
+            <button class="ghost-button policy-remove" type="button" data-remove-row>Remove</button>
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

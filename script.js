@@ -171,6 +171,42 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
+function sanitizeText(value, maxLength = 255) {
+    const trimmed = String(value ?? "").trim();
+    const withoutControlChars = trimmed.replace(/[\u0000-\u001F\u007F]/g, "");
+    return withoutControlChars.slice(0, maxLength);
+}
+
+function sanitizeEmail(value) {
+    return sanitizeText(value, 254).toLowerCase();
+}
+
+function sanitizeSearchInput(value) {
+    const raw = sanitizeText(value, 80);
+    return raw.replace(/[^a-zA-Z0-9@.\-\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function sanitizePhone(value) {
+    const raw = sanitizeText(value, 40);
+    return raw.replace(/[^0-9+()\-\s.]/g, "").trim();
+}
+
+function sanitizeUuid(value) {
+    const normalized = sanitizeText(value, 64);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)
+        ? normalized
+        : "";
+}
+
+function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
+}
+
+function toPositiveInt(value, fallback = null) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function setMessage(target, message, isError) {
     if (!target) {
         return;
@@ -430,11 +466,21 @@ async function handleLoginForm() {
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const email = loginForm.querySelector('input[name="email"]')?.value?.trim();
+        const email = sanitizeEmail(loginForm.querySelector('input[name="email"]')?.value || "");
         const password = loginForm.querySelector('input[name="password"]')?.value || "";
 
         if (!email || !password) {
             setMessage(messageEl, "Email and password are required.", true);
+            return;
+        }
+
+        if (!isValidEmail(email)) {
+            setMessage(messageEl, "Please enter a valid email address.", true);
+            return;
+        }
+
+        if (password.length > 256) {
+            setMessage(messageEl, "Password is too long.", true);
             return;
         }
 
@@ -443,6 +489,11 @@ async function handleLoginForm() {
             const accountType = loginForm.querySelector('select[name="account-type"]')?.value || "student";
             if (password !== confirmPassword) {
                 setMessage(messageEl, "Passwords do not match.", true);
+                return;
+            }
+
+            if (password.length < 8) {
+                setMessage(messageEl, "Password must be at least 8 characters.", true);
                 return;
             }
 
@@ -607,9 +658,9 @@ async function loadDirectoryProfiles(type, searchText) {
         .order("first_name", { ascending: true })
         .limit(100);
 
-    const trimmed = String(searchText || "").trim();
+    const trimmed = sanitizeSearchInput(searchText);
     if (trimmed) {
-        const safeTerm = trimmed.replace(/,/g, " ");
+        const safeTerm = trimmed;
         query = query.or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,email.ilike.%${safeTerm}%,school.ilike.%${safeTerm}%`);
     }
 
@@ -921,12 +972,14 @@ async function handleSettingsForm() {
     settingsForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const fullName = settingsForm.querySelector('input[name="full-name"]')?.value || "";
-        const email = settingsForm.querySelector('input[name="email"]')?.value?.trim() || "";
-        const school = settingsForm.querySelector('input[name="school"]')?.value?.trim() || null;
-        const phone = settingsForm.querySelector('input[name="phone"]')?.value?.trim() || null;
+        const fullName = sanitizeText(settingsForm.querySelector('input[name="full-name"]')?.value || "", 120);
+        const email = sanitizeEmail(settingsForm.querySelector('input[name="email"]')?.value || "");
+        const schoolValue = sanitizeText(settingsForm.querySelector('input[name="school"]')?.value || "", 120);
+        const phoneValue = sanitizePhone(settingsForm.querySelector('input[name="phone"]')?.value || "");
+        const school = schoolValue || null;
+        const phone = phoneValue || null;
         const gradYearRaw = settingsForm.querySelector('input[name="grad-year"]')?.value || "";
-        const gradYear = gradYearRaw ? Number(gradYearRaw) : null;
+        const gradYear = gradYearRaw ? toPositiveInt(gradYearRaw, null) : null;
         const newPassword = settingsForm.querySelector('input[name="new-password"]')?.value || "";
         const confirmPassword = settingsForm.querySelector('input[name="confirm-password"]')?.value || "";
         const { firstName, lastName } = splitName(fullName);
@@ -936,8 +989,23 @@ async function handleSettingsForm() {
             return;
         }
 
+        if (!isValidEmail(email)) {
+            setMessage(messageEl, "Please enter a valid email address.", true);
+            return;
+        }
+
         if ((newPassword || confirmPassword) && newPassword !== confirmPassword) {
             setMessage(messageEl, "New password and confirmation must match.", true);
+            return;
+        }
+
+        if (newPassword && newPassword.length < 8) {
+            setMessage(messageEl, "New password must be at least 8 characters.", true);
+            return;
+        }
+
+        if (newPassword.length > 256) {
+            setMessage(messageEl, "New password is too long.", true);
             return;
         }
 
@@ -1049,7 +1117,7 @@ async function handleProfileNetworkSection() {
     let cachedProfiles = [];
 
     function applyFilters() {
-        const searchText = String(searchInput?.value || "").trim().toLowerCase();
+        const searchText = sanitizeSearchInput(searchInput?.value || "").toLowerCase();
         const filtered = cachedProfiles.filter((profile) => {
             if (normalizeRoleType(profile.account_type) !== activeTab) {
                 return false;
@@ -1165,8 +1233,8 @@ async function handleUserHistoryPage() {
 
     const params = new URLSearchParams(window.location.search);
     const paramType = normalizeRoleType(params.get("type"));
-    const paramId = String(params.get("id") || "").trim();
-    const paramName = params.get("name") || "User";
+    const paramId = sanitizeUuid(params.get("id") || "");
+    const paramName = sanitizeText(params.get("name") || "User", 120);
 
     let targetType, targetId, targetName, isSelfView;
 
@@ -1199,7 +1267,7 @@ async function handleUserHistoryPage() {
         const ownAccountType = normalizeAccountType(ownProfile.accountType);
         const ownConfig = PROFILE_CONFIG[ownAccountType];
         targetType = normalizeRoleType(ownAccountType);
-        targetId = String(ownProfile[ownConfig.idColumn] || "").trim();
+        targetId = sanitizeUuid(ownProfile[ownConfig.idColumn] || "");
         targetName = getDisplayName(ownProfile, user);
     }
 
@@ -1660,6 +1728,307 @@ async function handleDebatesPage() {
     setMessage(messageEl, `Loaded ${records.length} debate records for ${student.first_name || student.email}.`, false);
 }
 
+async function handlePolicySetupPage() {
+    const pageRoot = document.querySelector("[data-policy-setup]");
+    const form = document.querySelector("[data-policy-form]");
+    const messageEl = document.querySelector("[data-policy-message]");
+    const studentRowsRoot = document.querySelector("[data-student-rows]");
+    const judgeRowsRoot = document.querySelector("[data-judge-rows]");
+    const coachRowsRoot = document.querySelector("[data-coach-rows]");
+    const tournamentSelect = document.querySelector("[data-policy-tournament]");
+    const roundSelect = document.querySelector("[data-policy-round]");
+    const adminNameEl = document.querySelector("[data-policy-admin-name]");
+    const adminRoleEl = document.querySelector("[data-policy-admin-role]");
+    const adminAvatarEl = document.querySelector("[data-policy-admin-avatar]");
+
+    if (!pageRoot || !form || !studentRowsRoot || !judgeRowsRoot || !coachRowsRoot) {
+        return;
+    }
+
+    if (!(await requireAuth()) || !supabaseClient) {
+        return;
+    }
+
+    const { user, error } = await requireAuthenticatedUser();
+    if (error || !user) {
+        window.location.replace("index.html");
+        return;
+    }
+
+    const adminProfile = await getAdminProfile(user);
+    if (!adminProfile?.admin_id) {
+        window.location.replace("debates.html");
+        return;
+    }
+
+    const adminName = getDisplayName({ ...adminProfile, accountType: "admin" }, user);
+    if (adminNameEl) {
+        adminNameEl.textContent = adminName;
+    }
+    if (adminRoleEl) {
+        adminRoleEl.textContent = adminProfile.role_title || "Administrator";
+    }
+    if (adminAvatarEl) {
+        adminAvatarEl.textContent = getInitials(adminName);
+    }
+
+    const studentTemplate = document.getElementById("student-row-template");
+    const judgeTemplate = document.getElementById("judge-row-template");
+    const coachTemplate = document.getElementById("coach-row-template");
+
+    const addStudentRowBtn = document.querySelector("[data-add-student-row]");
+    const addJudgeRowBtn = document.querySelector("[data-add-judge-row]");
+    const addCoachRowBtn = document.querySelector("[data-add-coach-row]");
+    const resetBtn = document.querySelector("[data-reset-policy-form]");
+
+    const debateDateInput = form.querySelector('input[name="debate_date"]');
+    if (debateDateInput && !debateDateInput.value) {
+        debateDateInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    setMessage(messageEl, "Loading setup data...", false);
+
+    const [studentsRes, judgesRes, coachesRes, tournamentsRes, roundsRes] = await Promise.all([
+        supabaseClient.from(TABLES.students).select("student_id,first_name,last_name,school").order("last_name").order("first_name"),
+        supabaseClient.from(TABLES.judges).select("judge_id,first_name,last_name,school").order("last_name").order("first_name"),
+        supabaseClient.from(TABLES.coaches).select("coach_id,first_name,last_name,school").order("last_name").order("first_name"),
+        supabaseClient.from(TABLES.tournament).select("tournament_id,name,start_date,status").order("start_date", { ascending: false }),
+        supabaseClient.from(TABLES.tournamentRound).select("tournament_round_id,tournament_id,debate_type,round_number,round_name,room").order("round_number", { ascending: true })
+    ]);
+
+    const loadError = studentsRes.error || judgesRes.error || coachesRes.error || tournamentsRes.error || roundsRes.error;
+    if (loadError) {
+        setMessage(messageEl, loadError.message || "Could not load setup options.", true);
+        return;
+    }
+
+    const students = studentsRes.data || [];
+    const judges = judgesRes.data || [];
+    const coaches = coachesRes.data || [];
+    const tournaments = tournamentsRes.data || [];
+    const allRounds = (roundsRes.data || []).filter((round) => /policy/i.test(String(round.debate_type || "")));
+
+    const toDisplayName = (record, school) => {
+        const full = `${record.first_name || ""} ${record.last_name || ""}`.trim() || "Unnamed";
+        return school ? `${full} (${school})` : full;
+    };
+
+    function refillTournamentOptions() {
+        if (!tournamentSelect) {
+            return;
+        }
+
+        tournamentSelect.innerHTML = '<option value="">No tournament link</option>';
+        tournaments.forEach((tournament) => {
+            const option = document.createElement("option");
+            option.value = tournament.tournament_id;
+            option.textContent = `${tournament.name}${tournament.start_date ? ` (${tournament.start_date})` : ""}`;
+            tournamentSelect.append(option);
+        });
+    }
+
+    function refillRoundOptions() {
+        if (!roundSelect) {
+            return;
+        }
+
+        const selectedTournamentId = String(tournamentSelect?.value || "");
+        const rounds = selectedTournamentId
+            ? allRounds.filter((round) => String(round.tournament_id) === selectedTournamentId)
+            : allRounds;
+
+        roundSelect.innerHTML = '<option value="">No round link</option>';
+        rounds.forEach((round) => {
+            const option = document.createElement("option");
+            option.value = round.tournament_round_id;
+            const title = round.round_name || `Round ${round.round_number}`;
+            option.textContent = `${title} • ${round.debate_type || "Policy"}${round.room ? ` • ${round.room}` : ""}`;
+            roundSelect.append(option);
+        });
+    }
+
+    function populateSelect(selectEl, options, emptyLabel) {
+        if (!selectEl) {
+            return;
+        }
+
+        selectEl.innerHTML = "";
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = emptyLabel;
+        selectEl.append(emptyOption);
+
+        options.forEach((item) => {
+            const option = document.createElement("option");
+            option.value = item.value;
+            option.textContent = item.label;
+            selectEl.append(option);
+        });
+    }
+
+    function attachRemoveHandler(row) {
+        row.querySelector("[data-remove-row]")?.addEventListener("click", () => {
+            row.remove();
+        });
+    }
+
+    function addStudentRow() {
+        if (!(studentTemplate instanceof HTMLTemplateElement)) {
+            return;
+        }
+
+        const row = studentTemplate.content.firstElementChild.cloneNode(true);
+        const studentSelect = row.querySelector("[data-student-id]");
+        const options = students.map((student) => ({
+            value: student.student_id,
+            label: toDisplayName(student, student.school)
+        }));
+
+        populateSelect(studentSelect, options, "Select student");
+        attachRemoveHandler(row);
+        studentRowsRoot.append(row);
+    }
+
+    function addJudgeRow() {
+        if (!(judgeTemplate instanceof HTMLTemplateElement)) {
+            return;
+        }
+
+        const row = judgeTemplate.content.firstElementChild.cloneNode(true);
+        const judgeSelect = row.querySelector("[data-judge-id]");
+        const options = judges.map((judge) => ({
+            value: judge.judge_id,
+            label: toDisplayName(judge, judge.school)
+        }));
+
+        populateSelect(judgeSelect, options, "Select judge");
+        attachRemoveHandler(row);
+        judgeRowsRoot.append(row);
+    }
+
+    function addCoachRow() {
+        if (!(coachTemplate instanceof HTMLTemplateElement)) {
+            return;
+        }
+
+        const row = coachTemplate.content.firstElementChild.cloneNode(true);
+        const coachSelect = row.querySelector("[data-coach-id]");
+        const options = coaches.map((coach) => ({
+            value: coach.coach_id,
+            label: toDisplayName(coach, coach.school)
+        }));
+
+        populateSelect(coachSelect, options, "Select coach");
+        attachRemoveHandler(row);
+        coachRowsRoot.append(row);
+    }
+
+    function resetRows() {
+        studentRowsRoot.replaceChildren();
+        judgeRowsRoot.replaceChildren();
+        coachRowsRoot.replaceChildren();
+
+        addStudentRow();
+        addStudentRow();
+        addJudgeRow();
+        addCoachRow();
+    }
+
+    refillTournamentOptions();
+    refillRoundOptions();
+    resetRows();
+    setMessage(messageEl, "Ready to schedule a policy debate.", false);
+
+    tournamentSelect?.addEventListener("change", refillRoundOptions);
+    addStudentRowBtn?.addEventListener("click", addStudentRow);
+    addJudgeRowBtn?.addEventListener("click", addJudgeRow);
+    addCoachRowBtn?.addEventListener("click", addCoachRow);
+
+    resetBtn?.addEventListener("click", () => {
+        form.reset();
+        if (debateDateInput) {
+            debateDateInput.value = new Date().toISOString().slice(0, 10);
+        }
+        refillRoundOptions();
+        resetRows();
+        setMessage(messageEl, "Form reset.", false);
+    });
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
+            .map((row) => {
+                const studentId = sanitizeUuid(row.querySelector("[data-student-id]")?.value || "");
+                return {
+                    student_id: studentId,
+                    team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
+                    debate_stance: sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24),
+                    speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
+                    is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
+                };
+            })
+            .filter((item) => item.student_id);
+
+        const judgeAssignments = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"))
+            .map((row) => ({
+                judge_id: sanitizeUuid(row.querySelector("[data-judge-id]")?.value || ""),
+                panel_number: toPositiveInt(row.querySelector("[data-panel-number]")?.value || 1, 1)
+            }))
+            .filter((item) => item.judge_id);
+
+        const coachAssignments = Array.from(coachRowsRoot.querySelectorAll("[data-policy-row]"))
+            .map((row) => ({
+                coach_id: sanitizeUuid(row.querySelector("[data-coach-id]")?.value || ""),
+                mentored_team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
+                notes: sanitizeText(row.querySelector("[data-coach-notes]")?.value || "", 500) || null
+            }))
+            .filter((item) => item.coach_id);
+
+        if (studentAssignments.length < 2) {
+            setMessage(messageEl, "Assign at least two students before creating the debate.", true);
+            return;
+        }
+
+        const uniqueStudentIds = new Set(studentAssignments.map((item) => item.student_id));
+        if (uniqueStudentIds.size !== studentAssignments.length) {
+            setMessage(messageEl, "Each student can only be assigned once in a debate.", true);
+            return;
+        }
+
+        const debateDate = sanitizeText(form.querySelector('input[name="debate_date"]')?.value || "", 32);
+        if (!debateDate) {
+            setMessage(messageEl, "Debate date is required.", true);
+            return;
+        }
+
+        setMessage(messageEl, "Creating policy debate setup...", false);
+
+        const payload = {
+            p_tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
+            p_tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null,
+            p_debate_date: debateDate,
+            p_debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
+            p_topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
+            p_room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
+            p_team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
+            p_team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
+            p_student_assignments: studentAssignments,
+            p_judge_assignments: judgeAssignments,
+            p_coach_assignments: coachAssignments
+        };
+
+        const response = await supabaseClient.rpc("create_policy_debate_setup", payload);
+        if (response.error) {
+            setMessage(messageEl, response.error.message || "Could not create policy debate setup.", true);
+            return;
+        }
+
+        const createdId = response.data;
+        setMessage(messageEl, `Policy debate created successfully (${createdId}).`, false);
+    });
+}
+
 async function setupSignOut() {
     const signOut = document.querySelector("[data-signout]");
     if (!signOut || !supabaseClient) {
@@ -1679,4 +2048,5 @@ handleProfileNetworkSection();
 handleDebatesPage();
 handleAdminDirectoryPage();
 handleUserHistoryPage();
+handlePolicySetupPage();
 setupSignOut();

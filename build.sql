@@ -243,6 +243,26 @@ create table if not exists C_Participation (
   constraint c_participation_unique unique (debate_id, coach_id, mentored_team_number)
 );
 
+create table if not exists Admin_Change_Log (
+  change_log_id uuid primary key default gen_random_uuid(),
+  admin_id uuid references Administrator(admin_id) on delete set null,
+  admin_auth_user_id uuid,
+  admin_email text,
+  action_type text not null,
+  entity_type text not null,
+  target_table text not null,
+  target_record_id text,
+  old_data jsonb,
+  new_data jsonb,
+  changed_fields text[],
+  changed_at timestamptz not null default now(),
+  constraint admin_change_log_action_check check (action_type in ('INSERT', 'UPDATE', 'DELETE'))
+);
+
+create index if not exists idx_admin_change_log_changed_at on Admin_Change_Log(changed_at desc);
+create index if not exists idx_admin_change_log_target_table on Admin_Change_Log(target_table);
+create index if not exists idx_admin_change_log_admin_id on Admin_Change_Log(admin_id);
+
 create table if not exists Images (
   image_id uuid primary key default gen_random_uuid(),
   description text,
@@ -273,6 +293,100 @@ create index if not exists idx_j_participation_debate_id on J_Participation(deba
 create index if not exists idx_j_participation_judge_id on J_Participation(judge_id);
 create index if not exists idx_c_participation_debate_id on C_Participation(debate_id);
 create index if not exists idx_c_participation_coach_id on C_Participation(coach_id);
+
+create or replace function public.resolve_admin_actor()
+returns table (
+  actor_admin_id uuid,
+  actor_auth_user_id uuid,
+  actor_email text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+begin
+  if viewer_uid is null and viewer_email = '' then
+    return;
+  end if;
+
+  return query
+  select a.admin_id, viewer_uid, viewer_email
+  from Administrator a
+  where a.auth_user_id = viewer_uid
+     or lower(a.email) = viewer_email
+  limit 1;
+end;
+$$;
+
+create or replace function public.log_admin_change(id_column text, entity_name text)
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor record;
+  old_json jsonb := case when TG_OP in ('UPDATE', 'DELETE') then to_jsonb(OLD) else null end;
+  new_json jsonb := case when TG_OP in ('UPDATE', 'INSERT') then to_jsonb(NEW) else null end;
+  changed_keys text[] := null;
+  target_id text := null;
+begin
+  select * into actor from public.resolve_admin_actor();
+  if actor.actor_admin_id is null then
+    return coalesce(NEW, OLD);
+  end if;
+
+  if TG_OP = 'UPDATE' then
+    select array_agg(key)
+    into changed_keys
+    from (
+      select key from jsonb_object_keys(coalesce(old_json, '{}'::jsonb)) as key
+      union
+      select key from jsonb_object_keys(coalesce(new_json, '{}'::jsonb)) as key
+    ) keys
+    where old_json -> key is distinct from new_json -> key;
+
+    if coalesce(array_length(changed_keys, 1), 0) = 0 then
+      return NEW;
+    end if;
+  end if;
+
+  if TG_OP = 'DELETE' then
+    target_id := coalesce(old_json ->> id_column, null);
+  else
+    target_id := coalesce(new_json ->> id_column, null);
+  end if;
+
+  insert into Admin_Change_Log (
+    admin_id,
+    admin_auth_user_id,
+    admin_email,
+    action_type,
+    entity_type,
+    target_table,
+    target_record_id,
+    old_data,
+    new_data,
+    changed_fields
+  ) values (
+    actor.actor_admin_id,
+    actor.actor_auth_user_id,
+    actor.actor_email,
+    TG_OP,
+    entity_name,
+    TG_TABLE_NAME,
+    target_id,
+    old_json,
+    new_json,
+    changed_keys
+  );
+
+  return coalesce(NEW, OLD);
+end;
+$$;
 
 select sync_updated_at_trigger(target_table)
 from unnest(array[
@@ -469,6 +583,41 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_auth_user();
 
+drop trigger if exists trg_admin_audit_students on Students;
+create trigger trg_admin_audit_students
+after insert or update or delete on Students
+for each row execute function public.log_admin_change('student_id', 'profile');
+
+drop trigger if exists trg_admin_audit_judges on Judges;
+create trigger trg_admin_audit_judges
+after insert or update or delete on Judges
+for each row execute function public.log_admin_change('judge_id', 'profile');
+
+drop trigger if exists trg_admin_audit_coaches on Coaches;
+create trigger trg_admin_audit_coaches
+after insert or update or delete on Coaches
+for each row execute function public.log_admin_change('coach_id', 'profile');
+
+drop trigger if exists trg_admin_audit_debate on Debate;
+create trigger trg_admin_audit_debate
+after insert or update or delete on Debate
+for each row execute function public.log_admin_change('debate_id', 'debate');
+
+drop trigger if exists trg_admin_audit_s_participation on S_Participation;
+create trigger trg_admin_audit_s_participation
+after insert or update or delete on S_Participation
+for each row execute function public.log_admin_change('s_participation_id', 'assignment');
+
+drop trigger if exists trg_admin_audit_j_participation on J_Participation;
+create trigger trg_admin_audit_j_participation
+after insert or update or delete on J_Participation
+for each row execute function public.log_admin_change('j_participation_id', 'assignment');
+
+drop trigger if exists trg_admin_audit_c_participation on C_Participation;
+create trigger trg_admin_audit_c_participation
+after insert or update or delete on C_Participation
+for each row execute function public.log_admin_change('c_participation_id', 'assignment');
+
 -- ------------------------------------------------------------
 -- Supabase auth + RLS policies
 -- ------------------------------------------------------------
@@ -488,6 +637,7 @@ begin
     'S_Participation'::regclass,
     'J_Participation'::regclass,
     'C_Participation'::regclass,
+    'Admin_Change_Log'::regclass,
     'Images'::regclass
   ]
   loop
@@ -703,6 +853,20 @@ on Debate
 for select
 to authenticated
 using (true);
+
+drop policy if exists admin_change_log_select_admin on Admin_Change_Log;
+create policy admin_change_log_select_admin
+on Admin_Change_Log
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from Administrator
+    where Administrator.auth_user_id = auth.uid()
+      or lower(Administrator.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+);
 
 create or replace function public.get_visible_profiles_for_user()
 returns table (
@@ -943,6 +1107,179 @@ $$;
 
 grant execute on function public.get_visible_profiles_for_user() to authenticated;
 grant execute on function public.get_user_debate_history(text, uuid) to authenticated;
+
+create or replace function public.create_policy_debate_setup(
+  p_tournament_id uuid,
+  p_tournament_round_id uuid,
+  p_debate_date date,
+  p_debate_time time,
+  p_topic text,
+  p_room text,
+  p_team_a_name text,
+  p_team_b_name text,
+  p_student_assignments jsonb,
+  p_judge_assignments jsonb,
+  p_coach_assignments jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+  created_debate_id uuid;
+  student_item jsonb;
+  judge_item jsonb;
+  coach_item jsonb;
+begin
+  if viewer_uid is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+
+  select exists (
+    select 1
+    from Administrator a
+    where a.auth_user_id = viewer_uid
+      or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if not viewer_is_admin then
+    raise exception 'Only administrators can set up policy debates.' using errcode = '42501';
+  end if;
+
+  if p_debate_date is null then
+    raise exception 'Debate date is required.' using errcode = '22023';
+  end if;
+
+  if coalesce(jsonb_array_length(coalesce(p_student_assignments, '[]'::jsonb)), 0) < 2 then
+    raise exception 'At least two student assignments are required.' using errcode = '22023';
+  end if;
+
+  if p_topic is not null and length(trim(p_topic)) > 500 then
+    raise exception 'Topic is too long.' using errcode = '22023';
+  end if;
+
+  if p_room is not null and length(trim(p_room)) > 50 then
+    raise exception 'Room is too long.' using errcode = '22023';
+  end if;
+
+  if p_team_a_name is not null and length(trim(p_team_a_name)) > 120 then
+    raise exception 'Team A name is too long.' using errcode = '22023';
+  end if;
+
+  if p_team_b_name is not null and length(trim(p_team_b_name)) > 120 then
+    raise exception 'Team B name is too long.' using errcode = '22023';
+  end if;
+
+  insert into Debate (
+    tournament_id,
+    tournament_round_id,
+    debate_date,
+    debate_time,
+    topic,
+    room,
+    status,
+    team_a_name,
+    team_b_name
+  ) values (
+    p_tournament_id,
+    p_tournament_round_id,
+    p_debate_date,
+    p_debate_time,
+    p_topic,
+    p_room,
+    'scheduled',
+    nullif(trim(coalesce(p_team_a_name, '')), ''),
+    nullif(trim(coalesce(p_team_b_name, '')), '')
+  )
+  returning debate_id into created_debate_id;
+
+  for student_item in
+    select value from jsonb_array_elements(coalesce(p_student_assignments, '[]'::jsonb))
+  loop
+    if coalesce(student_item ->> 'student_id', '') = '' then
+      continue;
+    end if;
+
+    insert into S_Participation (
+      debate_id,
+      student_id,
+      team_number,
+      debate_stance,
+      speaking_order,
+      is_captain
+    ) values (
+      created_debate_id,
+      (student_item ->> 'student_id')::uuid,
+      greatest(coalesce((student_item ->> 'team_number')::int, 1), 1),
+      case
+        when lower(coalesce(student_item ->> 'debate_stance', '')) in ('affirmative', 'negative')
+          then initcap(lower(student_item ->> 'debate_stance'))
+        else 'Affirmative'
+      end,
+      nullif(student_item ->> 'speaking_order', '')::int,
+      coalesce((student_item ->> 'is_captain')::boolean, false)
+    )
+    on conflict (debate_id, student_id) do update
+    set team_number = excluded.team_number,
+        debate_stance = excluded.debate_stance,
+        speaking_order = excluded.speaking_order,
+        is_captain = excluded.is_captain,
+        updated_at = now();
+  end loop;
+
+  for judge_item in
+    select value from jsonb_array_elements(coalesce(p_judge_assignments, '[]'::jsonb))
+  loop
+    if coalesce(judge_item ->> 'judge_id', '') = '' then
+      continue;
+    end if;
+
+    insert into J_Participation (
+      debate_id,
+      judge_id,
+      panel_number
+    ) values (
+      created_debate_id,
+      (judge_item ->> 'judge_id')::uuid,
+      greatest(coalesce((judge_item ->> 'panel_number')::int, 1), 1)
+    )
+    on conflict (debate_id, judge_id) do update
+    set panel_number = excluded.panel_number,
+        updated_at = now();
+  end loop;
+
+  for coach_item in
+    select value from jsonb_array_elements(coalesce(p_coach_assignments, '[]'::jsonb))
+  loop
+    if coalesce(coach_item ->> 'coach_id', '') = '' then
+      continue;
+    end if;
+
+    insert into C_Participation (
+      debate_id,
+      coach_id,
+      mentored_team_number,
+      notes
+    ) values (
+      created_debate_id,
+      (coach_item ->> 'coach_id')::uuid,
+      greatest(coalesce((coach_item ->> 'mentored_team_number')::int, 1), 1),
+      nullif(left(trim(coalesce(coach_item ->> 'notes', '')), 500), '')
+    )
+    on conflict (debate_id, coach_id, mentored_team_number) do update
+    set notes = excluded.notes,
+        updated_at = now();
+  end loop;
+
+  return created_debate_id;
+end;
+$$;
+
+grant execute on function public.create_policy_debate_setup(uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
 create or replace function public.get_judge_bias_stats(target_judge_id uuid)
 returns table (
