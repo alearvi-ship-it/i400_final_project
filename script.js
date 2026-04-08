@@ -32,19 +32,19 @@ const PROFILE_CONFIG = {
         accountType: "student",
         table: TABLES.students,
         idColumn: "student_id",
-        selectColumns: "student_id,auth_user_id,first_name,last_name,school,email,graduation_year,phone"
+        selectColumns: "student_id,auth_user_id,first_name,last_name,school,email,graduation_year,phone,emergency_contact"
     },
     coach: {
         accountType: "coach",
         table: TABLES.coaches,
         idColumn: "coach_id",
-        selectColumns: "coach_id,auth_user_id,first_name,last_name,school,email,phone,years_experience"
+        selectColumns: "coach_id,auth_user_id,first_name,last_name,school,email,phone,emergency_contact,years_experience"
     },
     judge: {
         accountType: "judge",
         table: TABLES.judges,
         idColumn: "judge_id",
-        selectColumns: "judge_id,auth_user_id,first_name,last_name,school,email,phone,certification"
+        selectColumns: "judge_id,auth_user_id,first_name,last_name,school,email,phone,emergency_contact,certification"
     },
     admin: {
         accountType: "admin",
@@ -214,6 +214,12 @@ function setMessage(target, message, isError) {
 
     target.textContent = message;
     target.style.color = isError ? "#a11" : "#165b33";
+}
+
+function updateSidebarNavigation(isAdmin) {
+    document.querySelectorAll("[data-nav-admin-only]").forEach((item) => {
+        item.hidden = !isAdmin;
+    });
 }
 
 function normalizeRoleType(value) {
@@ -718,6 +724,8 @@ async function handleAdminDirectoryPage() {
         return;
     }
 
+    updateSidebarNavigation(true);
+
     const adminName = getDisplayName({ ...adminProfile, accountType: "admin" }, user);
     if (adminNameEl) {
         adminNameEl.textContent = adminName;
@@ -823,6 +831,98 @@ function updateSettingsHeader(profile, user) {
     updateText("[data-settings-copy]", `${profile?.school || "School not set"} • ${profile?.email || user?.email || "No email on file"} • ${getRoleLabel(accountType)}`);
 }
 
+function applySettingsPerspective(viewingOtherProfile) {
+    const heroTitle = document.querySelector("[data-settings-hero-title]");
+    const heroCopy = document.querySelector("[data-settings-hero-copy]");
+    const roleCopy = document.querySelector("[data-settings-role-copy]");
+    const notificationCopy = document.querySelector("[data-settings-notification-copy]");
+    const securityCopy = document.querySelector("[data-settings-security-copy]");
+
+    if (!viewingOtherProfile) {
+        if (heroTitle) {
+            heroTitle.textContent = "Manage your profile.";
+        }
+        if (heroCopy) {
+            heroCopy.textContent = "Keep your event preferences, notifications, and team role current so coaches and captains can plan quickly.";
+        }
+        if (roleCopy) {
+            roleCopy.textContent = "Set the formats and responsibilities tied to your account.";
+        }
+        if (notificationCopy) {
+            notificationCopy.textContent = "Choose how you want tournament and practice updates delivered.";
+        }
+        if (securityCopy) {
+            securityCopy.textContent = "Update your password and session protections.";
+        }
+        return;
+    }
+
+    if (heroTitle) {
+        heroTitle.textContent = "Manage this profile.";
+    }
+    if (heroCopy) {
+        heroCopy.textContent = "Keep this account's event preferences, notifications, and team role details current for staff visibility.";
+    }
+    if (roleCopy) {
+        roleCopy.textContent = "Set the formats and responsibilities tied to this account.";
+    }
+    if (notificationCopy) {
+        notificationCopy.textContent = "Notification preferences shown here are tied to this account.";
+    }
+    if (securityCopy) {
+        securityCopy.textContent = "Password changes are not available while viewing another account.";
+    }
+}
+
+function updateSettingsCompletion(profile, user, viewingOtherProfile = false) {
+    const progressFill = document.querySelector("[data-settings-progress-fill]");
+    const progressCopy = document.querySelector("[data-settings-progress-copy]");
+
+    if (!progressFill || !progressCopy) {
+        return;
+    }
+
+    const accountType = normalizeAccountType(profile?.accountType || user?.user_metadata?.account_type);
+    const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
+    const fields = [
+        { label: "full name", complete: Boolean(fullName) },
+        { label: "email", complete: Boolean(profile?.email || user?.email) },
+        { label: "school", complete: Boolean(profile?.school) },
+        { label: "phone", complete: Boolean(profile?.phone) }
+    ];
+
+    if (accountType !== "admin") {
+        fields.push({ label: "emergency contact", complete: Boolean(profile?.emergency_contact) });
+    }
+
+    if (accountType === "student") {
+        fields.push({ label: "graduation year", complete: Number.isInteger(Number(profile?.graduation_year)) && Number(profile?.graduation_year) > 0 });
+    }
+
+    const completedCount = fields.filter((field) => field.complete).length;
+    const totalCount = fields.length;
+    const percentComplete = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+    const missingFields = fields.filter((field) => !field.complete).map((field) => field.label);
+
+    progressFill.style.width = `${percentComplete}%`;
+
+    if (!missingFields.length) {
+        progressCopy.textContent = `All ${totalCount} tracked profile fields are complete.`;
+        return;
+    }
+
+    const possessiveLabel = viewingOtherProfile ? "this profile's" : "your";
+
+    if (missingFields.length === 1) {
+        progressCopy.textContent = `${completedCount} of ${totalCount} tracked profile fields are complete. Add ${possessiveLabel} ${missingFields[0]}.`;
+        return;
+    }
+
+    const finalField = missingFields[missingFields.length - 1];
+    const leadingFields = missingFields.slice(0, -1).join(", ");
+    progressCopy.textContent = `${completedCount} of ${totalCount} tracked profile fields are complete. Add ${possessiveLabel} ${leadingFields} and ${finalField}.`;
+}
+
 async function preloadSettingsForm() {
     const settingsForm = document.querySelector("[data-settings-form]");
     if (!settingsForm || !supabaseClient) {
@@ -838,6 +938,7 @@ async function preloadSettingsForm() {
     const emailInput = settingsForm.querySelector('input[name="email"]');
     const schoolInput = settingsForm.querySelector('input[name="school"]');
     const phoneInput = settingsForm.querySelector('input[name="phone"]');
+    const emergencyContactInput = settingsForm.querySelector('input[name="emergency-contact"]');
     const gradYearInput = settingsForm.querySelector('input[name="grad-year"]');
     const profile = await getCurrentProfile(user);
     const accountType = normalizeAccountType(profile?.accountType || user.user_metadata?.account_type);
@@ -854,6 +955,9 @@ async function preloadSettingsForm() {
     if (phoneInput) {
         phoneInput.value = "";
     }
+    if (emergencyContactInput) {
+        emergencyContactInput.value = "";
+    }
     if (gradYearInput) {
         gradYearInput.value = "";
     }
@@ -862,6 +966,7 @@ async function preloadSettingsForm() {
 
     if (!profile) {
         updateSettingsHeader({ email: user.email, accountType }, user);
+        updateSettingsCompletion({ email: user.email, accountType }, user);
         return;
     }
 
@@ -877,11 +982,15 @@ async function preloadSettingsForm() {
     if (phoneInput) {
         phoneInput.value = profile.phone || "";
     }
+    if (emergencyContactInput) {
+        emergencyContactInput.value = profile.emergency_contact || "";
+    }
     if (gradYearInput && accountType === "student" && profile.graduation_year) {
         gradYearInput.value = profile.graduation_year;
     }
 
     updateSettingsHeader(profile, user);
+    updateSettingsCompletion(profile, user);
 }
 
 async function handleSettingsForm() {
@@ -890,6 +999,7 @@ async function handleSettingsForm() {
     const contextEl = document.querySelector("[data-settings-context]");
     const saveButton = document.querySelector("[data-settings-save-button]");
     const historyLink = document.querySelector("[data-settings-history-link]");
+    const securitySection = document.querySelector("[data-settings-security-section]");
 
     if (!settingsForm) {
         return;
@@ -914,6 +1024,9 @@ async function handleSettingsForm() {
     const isAdminMode = Boolean(adminProfile?.admin_id);
     const target = getSettingsQueryTarget();
 
+    updateSidebarNavigation(isAdminMode);
+    applySettingsPerspective(Boolean(target && isAdminMode));
+
     if (target && !isAdminMode) {
         window.location.replace("settings.html");
         return;
@@ -934,6 +1047,7 @@ async function handleSettingsForm() {
         const emailInput = settingsForm.querySelector('input[name="email"]');
         const schoolInput = settingsForm.querySelector('input[name="school"]');
         const phoneInput = settingsForm.querySelector('input[name="phone"]');
+        const emergencyContactInput = settingsForm.querySelector('input[name="emergency-contact"]');
         const gradYearInput = settingsForm.querySelector('input[name="grad-year"]');
 
         if (fullNameInput) {
@@ -948,13 +1062,20 @@ async function handleSettingsForm() {
         if (phoneInput) {
             phoneInput.value = targetProfile.phone || "";
         }
+        if (emergencyContactInput) {
+            emergencyContactInput.value = targetProfile.emergency_contact || "";
+        }
         if (gradYearInput) {
             gradYearInput.value = targetProfile.graduation_year || "";
         }
 
         setGraduationFieldVisibility(settingsForm, targetProfile.accountType);
         updateSettingsHeader(targetProfile, user);
+        updateSettingsCompletion(targetProfile, user, true);
         setFormDisabled(settingsForm, true);
+        if (securitySection) {
+            securitySection.hidden = true;
+        }
 
         if (saveButton) {
             saveButton.hidden = true;
@@ -977,6 +1098,9 @@ async function handleSettingsForm() {
     if (saveButton) {
         saveButton.hidden = false;
     }
+    if (securitySection) {
+        securitySection.hidden = false;
+    }
     if (historyLink) {
         historyLink.hidden = true;
     }
@@ -993,8 +1117,10 @@ async function handleSettingsForm() {
         const email = sanitizeEmail(settingsForm.querySelector('input[name="email"]')?.value || "");
         const schoolValue = sanitizeText(settingsForm.querySelector('input[name="school"]')?.value || "", 120);
         const phoneValue = sanitizePhone(settingsForm.querySelector('input[name="phone"]')?.value || "");
+        const emergencyContactValue = sanitizeText(settingsForm.querySelector('input[name="emergency-contact"]')?.value || "", 160);
         const school = schoolValue || null;
         const phone = phoneValue || null;
+        const emergencyContact = emergencyContactValue || null;
         const gradYearRaw = settingsForm.querySelector('input[name="grad-year"]')?.value || "";
         const gradYear = gradYearRaw ? toPositiveInt(gradYearRaw, null) : null;
         const newPassword = settingsForm.querySelector('input[name="new-password"]')?.value || "";
@@ -1047,6 +1173,10 @@ async function handleSettingsForm() {
             phone,
         };
 
+        if (accountType !== "admin") {
+            payload.emergency_contact = emergencyContact;
+        }
+
         if (accountType === "student") {
             payload.graduation_year = Number.isFinite(gradYear) ? gradYear : null;
         }
@@ -1088,6 +1218,7 @@ async function handleSettingsForm() {
         setMessage(messageEl, "Profile saved.", false);
         setGraduationFieldVisibility(settingsForm, accountType);
         updateSettingsHeader({ ...existingProfile, ...payload, accountType }, user);
+        updateSettingsCompletion({ ...existingProfile, ...payload, accountType }, user);
     });
 }
 
@@ -1227,8 +1358,6 @@ async function handleUserHistoryPage() {
     const backLinkEl = document.querySelector("[data-back-link]");
     const sidebarTitleEl = document.querySelector("[data-sidebar-title]");
     const sidebarBodyEl = document.querySelector("[data-sidebar-body]");
-    const adminNavItems = document.querySelectorAll("[data-nav-admin-only]");
-
     if (!pageRoot || !resultsRoot) {
         return;
     }
@@ -1246,7 +1375,7 @@ async function handleUserHistoryPage() {
     const adminProfile = await getAdminProfile(user);
     const isAdmin = Boolean(adminProfile?.admin_id);
 
-    adminNavItems.forEach((item) => { item.hidden = !isAdmin; });
+    updateSidebarNavigation(isAdmin);
 
     const params = new URLSearchParams(window.location.search);
     const paramType = normalizeRoleType(params.get("type"));
@@ -1254,6 +1383,7 @@ async function handleUserHistoryPage() {
     const paramName = sanitizeText(params.get("name") || "User", 120);
 
     let targetType, targetId, targetName, isSelfView;
+    let isAdminManagedHistory = false;
 
     if (paramId && !isAdmin) {
         window.location.replace("user-history.html");
@@ -1275,18 +1405,19 @@ async function handleUserHistoryPage() {
             return;
         }
 
-        if (normalizeAccountType(ownProfile.accountType) === "admin") {
-            resultsRoot.replaceChildren(createEmptyState("Administrator accounts do not have a participant debate history."));
-            setMessage(messageEl, "No debate history for administrator accounts.", false);
-            return;
-        }
-
         const ownAccountType = normalizeAccountType(ownProfile.accountType);
         const ownConfig = PROFILE_CONFIG[ownAccountType];
-        console.debug(`[handleUserHistoryPage] Profile data keys:`, Object.keys(ownProfile), `Account type config expects ID column: ${ownConfig.idColumn}`);
-        targetType = normalizeRoleType(ownAccountType);
-        targetId = sanitizeUuid(ownProfile[ownConfig.idColumn] || "");
-        targetName = getDisplayName(ownProfile, user);
+
+        if (ownAccountType === "admin") {
+            isAdminManagedHistory = true;
+            targetType = "admin";
+            targetId = sanitizeUuid(ownProfile.admin_id || "");
+            targetName = getDisplayName(ownProfile, user);
+        } else {
+            targetType = normalizeRoleType(ownAccountType);
+            targetId = sanitizeUuid(ownProfile[ownConfig.idColumn] || "");
+            targetName = getDisplayName(ownProfile, user);
+        }
     }
 
     if (!targetId) {
@@ -1301,14 +1432,20 @@ async function handleUserHistoryPage() {
     }
 
     if (titleEl) {
-        titleEl.textContent = isSelfView ? "My debate history" : `${targetName}'s debate history`;
+        titleEl.textContent = isSelfView
+            ? (isAdminManagedHistory ? "My managed debate history" : "My debate history")
+            : `${targetName}'s debate history`;
     }
 
     if (copyEl) {
-        const roleLabel = getRoleLabel(targetType).toLowerCase();
-        copyEl.textContent = isSelfView
-            ? `All debates linked to your ${roleLabel} account.`
-            : `All recorded debates for this ${roleLabel} account.`;
+        if (isSelfView && isAdminManagedHistory) {
+            copyEl.textContent = "All past debates you created or managed.";
+        } else {
+            const roleLabel = getRoleLabel(targetType).toLowerCase();
+            copyEl.textContent = isSelfView
+                ? `All debates linked to your ${roleLabel} account.`
+                : `All recorded debates for this ${roleLabel} account.`;
+        }
     }
 
     if (sidebarTitleEl) {
@@ -1316,9 +1453,13 @@ async function handleUserHistoryPage() {
     }
 
     if (sidebarBodyEl) {
-        sidebarBodyEl.textContent = isSelfView
-            ? "Your complete debate record — all rounds from every tournament."
-            : "Reviewing the full debate history tied to this account.";
+        if (isSelfView && isAdminManagedHistory) {
+            sidebarBodyEl.textContent = "Past debates you created or managed across tournaments.";
+        } else {
+            sidebarBodyEl.textContent = isSelfView
+                ? "Your complete debate record — all rounds from every tournament."
+                : "Reviewing the full debate history tied to this account.";
+        }
     }
 
     if (backLinkEl) {
@@ -1332,6 +1473,33 @@ async function handleUserHistoryPage() {
     }
 
     setMessage(messageEl, "Loading debate history...", false);
+
+    if (isSelfView && isAdminManagedHistory) {
+        const managedResult = await getManagedDebatesForAdmin(targetId);
+        if (managedResult.error) {
+            resultsRoot.replaceChildren(createEmptyState("Debate history could not be loaded."));
+            setMessage(messageEl, managedResult.error.message, true);
+            return;
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        const pastManaged = (managedResult.records || [])
+            .filter((record) => {
+                const status = String(record.status || "").toLowerCase();
+                return record.debateDate < today || status === "completed" || status === "finished";
+            })
+            .reverse()
+            .map(mapManagedDebateToHistoryRecord);
+
+        if (!pastManaged.length) {
+            resultsRoot.replaceChildren(createEmptyState("No past managed debates are recorded yet."));
+            setMessage(messageEl, "No managed debate history records were found.", false);
+        } else {
+            resultsRoot.replaceChildren(...pastManaged.map(createHistoryCard));
+            setMessage(messageEl, `Loaded ${pastManaged.length} managed debate history record(s).`, false);
+        }
+        return;
+    }
 
     const response = await supabaseClient.rpc("get_user_debate_history", {
         target_account_type: targetType,
@@ -1589,6 +1757,248 @@ function createPastCard(record) {
     return article;
 }
 
+function normalizeAdminDebateRecord(row) {
+    const tournament = row.tournament || {};
+    const round = row.tournament_round || {};
+
+    return {
+        debateId: row.debate_id,
+        debateDate: row.debate_date,
+        debateTime: row.debate_time,
+        topic: row.topic,
+        room: row.room,
+        status: row.status,
+        teamAName: row.team_a_name,
+        teamBName: row.team_b_name,
+        tournamentName: tournament.name,
+        hostSchool: tournament.host_school,
+        location: tournament.location,
+        roundName: round.round_name,
+        roundNumber: round.round_number,
+        debateType: round.debate_type,
+        scheduledStart: round.scheduled_start
+    };
+}
+
+function mapManagedDebateToHistoryRecord(record) {
+    return {
+        debate_id: record.debateId,
+        debate_date: record.debateDate,
+        debate_status: record.status || "scheduled",
+        tournament_name: record.tournamentName || "Managed debate",
+        round_name: record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD"),
+        debate_type: record.debateType || "Debate",
+        room: record.room || "TBD",
+        topic: record.topic || `${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`,
+        role_context: "Managed by administrator"
+    };
+}
+
+async function getManagedDebatesForAdmin(adminId) {
+    if (!adminId) {
+        return { records: [], error: null };
+    }
+
+    const createdDebatesResponse = await supabaseClient
+        .from(TABLES.debate)
+        .select(`
+            debate_id,
+            debate_date,
+            debate_time,
+            topic,
+            room,
+            status,
+            team_a_name,
+            team_b_name,
+            tournament!left(
+                tournament_id,
+                name,
+                host_school,
+                location,
+                created_by_admin_id
+            ),
+            tournament_round!left(
+                round_number,
+                round_name,
+                debate_type,
+                scheduled_start
+            )
+        `)
+        .eq("tournament.created_by_admin_id", adminId)
+        .order("debate_date", { ascending: true })
+        .order("debate_time", { ascending: true, nullsFirst: false });
+
+    if (createdDebatesResponse.error) {
+        return { records: [], error: createdDebatesResponse.error };
+    }
+
+    const adminLogResponse = await supabaseClient
+        .from("admin_change_log")
+        .select("target_record_id")
+        .eq("admin_id", adminId)
+        .eq("target_table", "debate");
+
+    let managedDebates = createdDebatesResponse.data || [];
+
+    if (!adminLogResponse.error) {
+        const managedDebateIds = Array.from(new Set((adminLogResponse.data || [])
+            .map((row) => sanitizeUuid(row.target_record_id || ""))
+            .filter(Boolean)));
+
+        if (managedDebateIds.length) {
+            const touchedDebatesResponse = await supabaseClient
+                .from(TABLES.debate)
+                .select(`
+                    debate_id,
+                    debate_date,
+                    debate_time,
+                    topic,
+                    room,
+                    status,
+                    team_a_name,
+                    team_b_name,
+                    tournament!left(
+                        tournament_id,
+                        name,
+                        host_school,
+                        location,
+                        created_by_admin_id
+                    ),
+                    tournament_round!left(
+                        round_number,
+                        round_name,
+                        debate_type,
+                        scheduled_start
+                    )
+                `)
+                .in("debate_id", managedDebateIds)
+                .order("debate_date", { ascending: true })
+                .order("debate_time", { ascending: true, nullsFirst: false });
+
+            if (!touchedDebatesResponse.error) {
+                managedDebates = [...managedDebates, ...(touchedDebatesResponse.data || [])];
+            }
+        }
+    }
+
+    const records = Array.from(
+        new Map(managedDebates.map((row) => [row.debate_id, row])).values()
+    ).map(normalizeAdminDebateRecord);
+
+    return { records, error: null };
+}
+
+function createAdminUpcomingCard(record) {
+    const article = document.createElement("article");
+    article.className = "debate-card debate-card--upcoming";
+
+    const eventName = record.debateType || "Debate";
+    const status = record.status || "Scheduled";
+    const when = formatDateLabel(record.debateDate);
+    const location = [record.hostSchool, record.location].filter(Boolean).join(" • ") || record.room || "Location TBD";
+    const roundLabel = record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD");
+
+    article.innerHTML = `
+        <div class="debate-card-head">
+            <div>
+                <span class="tag tag--event">${escapeHtml(eventName)}</span>
+                <span class="tag tag--upcoming">${escapeHtml(status)}</span>
+            </div>
+            <time class="debate-date">${escapeHtml(when)}</time>
+        </div>
+        <h4 class="debate-title">${escapeHtml(record.tournamentName || `${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</h4>
+        <p class="debate-meta">${escapeHtml(location)}</p>
+        <div class="debate-details">
+            <div class="debate-detail">
+                <span class="detail-label">Matchup</span>
+                <span class="detail-value">${escapeHtml(`${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</span>
+            </div>
+            <div class="debate-detail">
+                <span class="detail-label">Round</span>
+                <span class="detail-value">${escapeHtml(roundLabel)}</span>
+            </div>
+            <div class="debate-detail">
+                <span class="detail-label">Start</span>
+                <span class="detail-value">${escapeHtml(formatTimeLabel(record.debateTime, record.scheduledStart))}</span>
+            </div>
+        </div>
+        <div class="debate-card-foot">
+            <button class="primary-button debate-button" type="button" data-admin-edit-debate>Edit debate</button>
+            <a class="ghost-button debate-button" href="#">View details</a>
+        </div>
+    `;
+
+    const editButton = article.querySelector("[data-admin-edit-debate]");
+    editButton?.addEventListener("click", async () => {
+        const nextTopic = prompt("Update topic", record.topic || "") ?? null;
+        if (nextTopic === null) {
+            return;
+        }
+
+        const nextRoom = prompt("Update room", record.room || "") ?? null;
+        if (nextRoom === null) {
+            return;
+        }
+
+        const statusInput = prompt("Update status (scheduled, in_progress, or delayed)", (record.status || "scheduled")) ?? null;
+        if (statusInput === null) {
+            return;
+        }
+
+        const nextStatus = sanitizeText(statusInput, 32).toLowerCase();
+        if (!["scheduled", "in_progress", "delayed"].includes(nextStatus)) {
+            alert("Status must be one of: scheduled, in_progress, delayed.");
+            return;
+        }
+
+        const updateResponse = await supabaseClient
+            .from(TABLES.debate)
+            .update({
+                topic: sanitizeText(nextTopic, 500) || null,
+                room: sanitizeText(nextRoom, 50) || null,
+                status: nextStatus
+            })
+            .eq("debate_id", record.debateId);
+
+        if (updateResponse.error) {
+            alert(`Could not update debate: ${updateResponse.error.message}`);
+            return;
+        }
+
+        window.location.reload();
+    });
+
+    return article;
+}
+
+function createAdminPastCard(record) {
+    const article = document.createElement("article");
+    article.className = "past-card";
+
+    const when = formatDateLabel(record.debateDate);
+    const roundText = record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD");
+    const statusText = (record.status || "completed").toLowerCase();
+    const readOnlyStatus = statusText === "completed" || statusText === "finished" ? "Completed" : "Read-only";
+
+    article.innerHTML = `
+        <div class="past-card-left">
+            <span class="result-badge result-badge--loss">${escapeHtml(readOnlyStatus)}</span>
+            <div>
+                <h4 class="debate-title">${escapeHtml(record.topic || record.tournamentName || "Debate Round")}</h4>
+                <p class="debate-meta">${escapeHtml(`${when} • ${record.debateType || "Debate"} • ${roundText}`)}</p>
+                <p class="debate-meta">${escapeHtml(`${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</p>
+            </div>
+        </div>
+        <div class="past-card-right">
+            <div class="past-card-actions">
+                <span class="ghost-button" aria-disabled="true">Past debates are read-only</span>
+            </div>
+        </div>
+    `;
+
+    return article;
+}
+
 function updateDebatesSidebar(profile, records) {
     const fullName = getDisplayName(profile);
     const accountType = normalizeAccountType(profile?.accountType);
@@ -1604,19 +2014,20 @@ function updateDebatesSidebar(profile, records) {
     updateText("[data-user-avatar]", getInitials(fullName));
     updateText("[data-user-name]", fullName);
     updateText("[data-user-role]", roleLabel);
-    updateText("[data-rounds-count]", String(accountType === "student" ? records.length : 0));
+    updateText("[data-rounds-count]", String(records.length));
     updateText("[data-wins-count]", `${accountType === "student" ? wins : 0}W`);
     updateText("[data-losses-count]", `${accountType === "student" ? losses : 0}L`);
 }
 
 async function handleDebatesPage() {
     const upcomingList = document.querySelector("[data-upcoming-list]");
-    const pastList = document.querySelector("[data-past-list]");
     const upcomingCount = document.querySelector("[data-upcoming-count]");
-    const pastCount = document.querySelector("[data-past-count]");
     const messageEl = document.querySelector("[data-debates-message]");
+    const kickerEl = document.querySelector("[data-debates-kicker]");
+    const titleEl = document.querySelector("[data-debates-title]");
+    const copyEl = document.querySelector("[data-debates-copy]");
 
-    if (!upcomingList || !pastList) {
+    if (!upcomingList) {
         return;
     }
 
@@ -1634,6 +2045,24 @@ async function handleDebatesPage() {
         return;
     }
 
+    const adminProfile = await getAdminProfile(user);
+    const viewerIsAdmin = Boolean(adminProfile?.admin_id);
+    updateSidebarNavigation(viewerIsAdmin);
+
+    if (viewerIsAdmin) {
+        if (kickerEl) {
+            kickerEl.textContent = "Administrator";
+        }
+        if (titleEl) {
+            titleEl.textContent = "Debates you manage";
+        }
+        if (copyEl) {
+            copyEl.textContent = "Upcoming debates can be edited here. Past managed debates are in My History.";
+        }
+    } else if (copyEl) {
+        copyEl.textContent = "Upcoming rounds linked to your account. Past rounds are in My History.";
+    }
+
     const profile = await getCurrentProfile(user);
     const fallbackProfile = profile || {
         accountType: normalizeAccountType(user.user_metadata?.account_type),
@@ -1644,14 +2073,44 @@ async function handleDebatesPage() {
 
     updateDebatesSidebar(fallbackProfile, []);
 
+    if (viewerIsAdmin) {
+        setMessage(messageEl, "Loading debates you manage...", false);
+
+        const managedResult = await getManagedDebatesForAdmin(adminProfile.admin_id);
+        if (managedResult.error) {
+            upcomingList.replaceChildren(createEmptyState("Managed debates could not be loaded."));
+            if (upcomingCount) {
+                upcomingCount.textContent = "0";
+            }
+            setMessage(messageEl, managedResult.error.message, true);
+            return;
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        const adminRecords = managedResult.records;
+        const upcomingDebates = adminRecords.filter((record) => {
+            const status = String(record.status || "").toLowerCase();
+            return record.debateDate >= today && status !== "completed" && status !== "finished";
+        });
+
+        updateDebatesSidebar(profile, adminRecords);
+
+        upcomingList.replaceChildren(...(upcomingDebates.length
+            ? upcomingDebates.map(createAdminUpcomingCard)
+            : [createEmptyState("No upcoming managed debates were found.")]));
+
+        if (upcomingCount) {
+            upcomingCount.textContent = String(upcomingDebates.length);
+        }
+
+        setMessage(messageEl, `Loaded ${adminRecords.length} managed debate record(s).`, false);
+        return;
+    }
+
     if (!profile) {
         upcomingList.replaceChildren(createEmptyState("No matching profile record was found for this account yet. Complete your profile first."));
-        pastList.replaceChildren(createEmptyState("Once your profile is saved, your debate history will appear here."));
         if (upcomingCount) {
             upcomingCount.textContent = "0";
-        }
-        if (pastCount) {
-            pastCount.textContent = "0";
         }
         setMessage(messageEl, "No matching profile record was found for this account.", true);
         return;
@@ -1659,12 +2118,8 @@ async function handleDebatesPage() {
 
     if (profile.accountType !== "student" || !profile.student_id) {
         upcomingList.replaceChildren(createEmptyState(`${getRoleLabel(profile.accountType)} accounts do not have student debate rounds attached to this page.`));
-        pastList.replaceChildren(createEmptyState("Student round history will appear here for student accounts."));
         if (upcomingCount) {
             upcomingCount.textContent = "0";
-        }
-        if (pastCount) {
-            pastCount.textContent = "0";
         }
         setMessage(messageEl, `${getRoleLabel(profile.accountType)} account loaded. No student debate schedule is available for this profile.`, false);
         return;
@@ -1728,20 +2183,17 @@ async function handleDebatesPage() {
     const records = (participationResponse.data || [])
         .map(normalizeParticipationRecord)
         .sort((left, right) => String(left.debateDate || "").localeCompare(String(right.debateDate || "")));
-    const upcomingDebates = records.filter((record) => record.debateDate >= today);
-    const pastDebates = records.filter((record) => record.debateDate < today).reverse();
+    const upcomingDebates = records.filter((record) => {
+        const status = String(record.status || "").toLowerCase();
+        return record.debateDate >= today && status !== "completed" && status !== "finished";
+    });
 
     updateDebatesSidebar(student, records);
 
     upcomingList.replaceChildren(...(upcomingDebates.length ? upcomingDebates.map(createUpcomingCard) : [createEmptyState("No upcoming rounds are linked to your student profile yet.")]));
-    pastList.replaceChildren(...(pastDebates.length ? pastDebates.map(createPastCard) : [createEmptyState("No completed rounds are linked to your student profile yet.")]));
 
     if (upcomingCount) {
         upcomingCount.textContent = String(upcomingDebates.length);
-    }
-
-    if (pastCount) {
-        pastCount.textContent = String(pastDebates.length);
     }
 
     setMessage(messageEl, `Loaded ${records.length} debate records for ${student.first_name || student.email}.`, false);
@@ -1779,6 +2231,8 @@ async function handlePolicySetupPage() {
         window.location.replace("debates.html");
         return;
     }
+
+    updateSidebarNavigation(true);
 
     const adminName = getDisplayName({ ...adminProfile, accountType: "admin" }, user);
     if (adminNameEl) {

@@ -116,6 +116,7 @@ create table if not exists Students (
   email text not null unique,
   graduation_year int,
   phone text,
+  emergency_contact text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -129,6 +130,7 @@ create table if not exists Judges (
   email text not null unique,
   certification text,
   phone text,
+  emergency_contact text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -141,6 +143,7 @@ create table if not exists Coaches (
   school text,
   email text not null unique,
   phone text,
+  emergency_contact text,
   years_experience int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -480,34 +483,37 @@ on conflict (admin_id) do update
 set auth_user_id = excluded.auth_user_id;
 
 insert into Students (
-  student_id, auth_user_id, first_name, last_name, school, email, graduation_year, phone
+  student_id, auth_user_id, first_name, last_name, school, email, graduation_year, phone, emergency_contact
 ) values
-  ('00000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000001', 'Taylor', 'Morgan', 'Eastview High School', 'taylor.morgan@eastview.edu', 2027, '555-1001'),
-  ('00000000-0000-0000-0000-000000000002', null, 'Alex', 'Chen', 'Eastview High School', 'alex.chen@eastview.edu', 2027, '555-1002'),
-  ('00000000-0000-0000-0000-000000000003', null, 'Jordan', 'Lee', 'Lakewood Academy', 'jordan.lee@lakewood.edu', 2028, '555-1003'),
-  ('00000000-0000-0000-0000-000000000004', null, 'Casey', 'Nguyen', 'Eastview High School', 'casey.nguyen@eastview.edu', 2028, '555-1004'),
-  ('00000000-0000-0000-0000-000000000005', null, 'Riley', 'Johnson', 'Northfield High School', 'riley.johnson@northfield.edu', 2027, '555-1005'),
-  ('00000000-0000-0000-0000-000000000006', null, 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006')
+  ('00000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000001', 'Taylor', 'Morgan', 'Eastview High School', 'taylor.morgan@eastview.edu', 2027, '555-1001', null),
+  ('00000000-0000-0000-0000-000000000002', null, 'Alex', 'Chen', 'Eastview High School', 'alex.chen@eastview.edu', 2027, '555-1002', 'Mei Chen - 555-4102'),
+  ('00000000-0000-0000-0000-000000000003', null, 'Jordan', 'Lee', 'Lakewood Academy', 'jordan.lee@lakewood.edu', 2028, '555-1003', 'Pat Lee - 555-4103'),
+  ('00000000-0000-0000-0000-000000000004', null, 'Casey', 'Nguyen', 'Eastview High School', 'casey.nguyen@eastview.edu', 2028, '555-1004', 'Linh Nguyen - 555-4104'),
+  ('00000000-0000-0000-0000-000000000005', null, 'Riley', 'Johnson', 'Northfield High School', 'riley.johnson@northfield.edu', 2027, '555-1005', 'Dana Johnson - 555-4105'),
+  ('00000000-0000-0000-0000-000000000006', null, 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006', 'Anita Gupta - 555-4106')
 on conflict (student_id) do update
-set auth_user_id = excluded.auth_user_id;
+set auth_user_id = excluded.auth_user_id,
+    emergency_contact = coalesce(Students.emergency_contact, excluded.emergency_contact);
 
 insert into Judges (
-  judge_id, auth_user_id, first_name, last_name, school, email, certification, phone
+  judge_id, auth_user_id, first_name, last_name, school, email, certification, phone, emergency_contact
 ) values
-  ('10000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000002', 'Mia', 'Rodriguez', 'Independent', 'mia.rodriguez@judges.org', 'NSDA Gold', '555-2001'),
-  ('10000000-0000-0000-0000-000000000002', null, 'Noah', 'Kim', 'Northfield High School', 'noah.kim@northfield.edu', 'NSDA Silver', '555-2002'),
-  ('10000000-0000-0000-0000-000000000003', null, 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003')
+  ('10000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000002', 'Mia', 'Rodriguez', 'Independent', 'mia.rodriguez@judges.org', 'NSDA Gold', '555-2001', 'Carlos Rodriguez - 555-4201'),
+  ('10000000-0000-0000-0000-000000000002', null, 'Noah', 'Kim', 'Northfield High School', 'noah.kim@northfield.edu', 'NSDA Silver', '555-2002', 'Sun Kim - 555-4202'),
+  ('10000000-0000-0000-0000-000000000003', null, 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003', 'Mara Turner - 555-4203')
 on conflict (judge_id) do update
-set auth_user_id = excluded.auth_user_id;
+set auth_user_id = excluded.auth_user_id,
+    emergency_contact = coalesce(Judges.emergency_contact, excluded.emergency_contact);
 
 insert into Coaches (
-  coach_id, auth_user_id, first_name, last_name, school, email, phone, years_experience
+  coach_id, auth_user_id, first_name, last_name, school, email, phone, emergency_contact, years_experience
 ) values
-  ('20000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000003', 'Renee', 'Davis', 'Eastview High School', 'renee.davis@eastview.edu', '555-3001', 9),
-  ('20000000-0000-0000-0000-000000000002', null, 'Evan', 'Brooks', 'Lakewood Academy', 'evan.brooks@lakewood.edu', '555-3002', 6),
-  ('20000000-0000-0000-0000-000000000003', null, 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 11)
+  ('20000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000003', 'Renee', 'Davis', 'Eastview High School', 'renee.davis@eastview.edu', '555-3001', 'Marcus Davis - 555-4301', 9),
+  ('20000000-0000-0000-0000-000000000002', null, 'Evan', 'Brooks', 'Lakewood Academy', 'evan.brooks@lakewood.edu', '555-3002', 'Jill Brooks - 555-4302', 6),
+  ('20000000-0000-0000-0000-000000000003', null, 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 'Raj Shah - 555-4303', 11)
 on conflict (coach_id) do update
-set auth_user_id = excluded.auth_user_id;
+set auth_user_id = excluded.auth_user_id,
+    emergency_contact = coalesce(Coaches.emergency_contact, excluded.emergency_contact);
 
 insert into Tournament (
   tournament_id, name, host_school, location, start_date, end_date, status, created_by_admin_id
@@ -521,8 +527,14 @@ insert into Tournament_Round (
 ) values
   ('50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Public Forum', 1, 'Prelim 1', '2026-04-12 09:00:00+00', 'A101'),
   ('50000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', 'Public Forum', 2, 'Prelim 2', '2026-04-12 11:00:00+00', 'A103'),
+  ('50000000-0000-0000-0000-000000000005', '40000000-0000-0000-0000-000000000001', 'Public Forum', 3, 'Prelim 3', '2026-04-12 14:00:00+00', 'A105'),
+  ('50000000-0000-0000-0000-000000000006', '40000000-0000-0000-0000-000000000001', 'Policy', 1, 'Policy Prelim 1', '2026-04-12 09:30:00+00', 'P201'),
+  ('50000000-0000-0000-0000-000000000007', '40000000-0000-0000-0000-000000000001', 'Policy', 2, 'Policy Prelim 2', '2026-04-12 12:30:00+00', 'P202'),
   ('50000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', 'Public Forum', 1, 'Prelim 1', '2026-05-03 09:30:00+00', 'B201'),
-  ('50000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000002', 'Public Forum', 2, 'Prelim 2', '2026-05-03 12:00:00+00', 'B204')
+  ('50000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000002', 'Public Forum', 2, 'Prelim 2', '2026-05-03 12:00:00+00', 'B204'),
+  ('50000000-0000-0000-0000-000000000008', '40000000-0000-0000-0000-000000000002', 'Public Forum', 3, 'Prelim 3', '2026-05-03 14:30:00+00', 'B206'),
+  ('50000000-0000-0000-0000-000000000009', '40000000-0000-0000-0000-000000000002', 'Policy', 1, 'Policy Prelim 1', '2026-05-03 10:00:00+00', 'P301'),
+  ('50000000-0000-0000-0000-00000000000a', '40000000-0000-0000-0000-000000000002', 'Policy', 2, 'Policy Prelim 2', '2026-05-03 13:00:00+00', 'P302')
 on conflict (tournament_round_id) do nothing;
 
 insert into Debate (

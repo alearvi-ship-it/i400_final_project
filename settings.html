@@ -14,19 +14,44 @@
         <aside class="settings-sidebar">
             <div>
                 <p class="eyebrow">DebateHub</p>
-                <h1>Manage your profile.</h1>
-                <p class="hero-copy">Keep your event preferences, notifications, and team role current so coaches and captains can plan quickly.</p>
-            </div>
+                <h1 data-settings-hero-title>Manage your profile.</h1>
+                <p class="hero-copy" data-settings-hero-copy>Keep your event preferences, notifications, and team role current so coaches and captains can plan quickly.</p>
 
-            <div class="sidebar-card">
-                <p class="hero-card-title">Profile completion</p>
-                <div class="progress-track" aria-hidden="true">
-                    <span class="progress-fill"></span>
+                <div class="sidebar-card">
+                    <p class="hero-card-title">Profile completion</p>
+                    <div class="progress-track" aria-hidden="true">
+                        <span class="progress-fill" data-settings-progress-fill></span>
+                    </div>
+                    <p class="hero-card-body" data-settings-progress-copy>Loading profile completion…</p>
                 </div>
-                <p class="hero-card-body">7 of 8 profile fields are complete. Add your emergency contact before the next invitational.</p>
             </div>
 
-            <a class="text-link sidebar-link" href="index.html">Return to login</a>
+            <nav class="sidebar-nav" aria-label="Site">
+                <a class="sidebar-nav-item" href="profiles.html" data-nav-admin-only hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile directory
+                </a>
+                <a class="sidebar-nav-item" href="policy-setup.html" data-nav-admin-only hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>
+                    Policy setup
+                </a>
+                <a class="sidebar-nav-item active" href="settings.html" aria-current="page">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile settings
+                </a>
+                <a class="sidebar-nav-item" href="debates.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    My Debates
+                </a>
+                <a class="sidebar-nav-item" href="user-history.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+                    My History
+                </a>
+                <a class="sidebar-nav-item sidebar-nav-signout" data-signout href="index.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                </a>
+            </nav>
         </aside>
 
         <main class="settings-main">
@@ -73,12 +98,17 @@
                         <span>Phone</span>
                         <input type="tel" name="phone" value="">
                     </label>
+
+                    <label class="field">
+                        <span>Emergency contact</span>
+                        <input type="text" name="emergency-contact" value="" placeholder="Name and phone number">
+                    </label>
                 </section>
 
                 <section class="panel-card section-card">
                     <div class="section-heading">
                         <h3>Debate role</h3>
-                        <p>Set the formats and responsibilities tied to your account.</p>
+                        <p data-settings-role-copy>Set the formats and responsibilities tied to your account.</p>
                     </div>
 
                     <div class="grid-two">
@@ -111,7 +141,7 @@
                 <section class="panel-card section-card">
                     <div class="section-heading">
                         <h3>Notifications</h3>
-                        <p>Choose how you want tournament and practice updates delivered.</p>
+                        <p data-settings-notification-copy>Choose how you want tournament and practice updates delivered.</p>
                     </div>
 
                     <div class="toggle-list">
@@ -139,10 +169,10 @@
                     </div>
                 </section>
 
-                <section class="panel-card section-card">
+                <section class="panel-card section-card" data-settings-security-section>
                     <div class="section-heading">
                         <h3>Account security</h3>
-                        <p>Update your password and session protections.</p>
+                        <p data-settings-security-copy>Update your password and session protections.</p>
                     </div>
 
                     <div class="grid-two">
@@ -165,29 +195,6 @@
                 <p data-settings-message aria-live="polite"></p>
             </form>
 
-            <section class="panel-card section-card network-section" data-network-section>
-                <div class="section-heading">
-                    <h3 data-network-title>Connected profiles</h3>
-                    <p data-network-copy>View profile details for people you are currently debating with. Completed debates do not allow profile access between participants.</p>
-                </div>
-
-                <div class="auth-tabs directory-tabs network-tabs" role="tablist" aria-label="Connected profile categories">
-                    <button class="auth-tab is-active" type="button" role="tab" aria-selected="true" data-network-tab="student">Students</button>
-                    <button class="auth-tab" type="button" role="tab" aria-selected="false" data-network-tab="judge">Judges</button>
-                    <button class="auth-tab" type="button" role="tab" aria-selected="false" data-network-tab="coach">Coaches</button>
-                </div>
-
-                <form class="directory-search network-search" data-network-search-form action="#" method="get">
-                    <label class="field">
-                        <span>Search profiles</span>
-                        <input type="search" data-network-search-input placeholder="Search by name or school">
-                    </label>
-                    <button class="primary-button" type="submit">Search</button>
-                </form>
-
-                <p class="status-text" data-network-message aria-live="polite"></p>
-                <div class="directory-grid network-grid" data-network-results></div>
-            </section>
         </main>
     </div>
 
