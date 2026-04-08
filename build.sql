@@ -508,6 +508,20 @@ using (
   or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
 );
 
+drop policy if exists students_select_admin on Students;
+create policy students_select_admin
+on Students
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from Administrator
+    where Administrator.auth_user_id = auth.uid()
+      or lower(Administrator.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+);
+
 drop policy if exists students_insert_own on Students;
 create policy students_insert_own
 on Students
@@ -542,6 +556,20 @@ using (
   or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
 );
 
+drop policy if exists judges_select_admin on Judges;
+create policy judges_select_admin
+on Judges
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from Administrator
+    where Administrator.auth_user_id = auth.uid()
+      or lower(Administrator.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+);
+
 drop policy if exists judges_insert_own on Judges;
 create policy judges_insert_own
 on Judges
@@ -569,6 +597,30 @@ with check (
 drop policy if exists coaches_select_own on Coaches;
 create policy coaches_select_own
 on Coaches
+for select
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists coaches_select_admin on Coaches;
+create policy coaches_select_admin
+on Coaches
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from Administrator
+    where Administrator.auth_user_id = auth.uid()
+      or lower(Administrator.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+);
+
+drop policy if exists administrator_select_own on Administrator;
+create policy administrator_select_own
+on Administrator
 for select
 to authenticated
 using (
@@ -651,3 +703,322 @@ on Debate
 for select
 to authenticated
 using (true);
+
+create or replace function public.get_visible_profiles_for_user()
+returns table (
+  account_type text,
+  account_id uuid,
+  first_name text,
+  last_name text,
+  school text,
+  graduation_year int,
+  certification text,
+  years_experience int,
+  email text,
+  phone text,
+  can_view_history boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+begin
+  if viewer_uid is null then
+    return;
+  end if;
+
+  select exists (
+    select 1
+    from Administrator a
+    where a.auth_user_id = viewer_uid
+      or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if viewer_is_admin then
+    return query
+      select 'student'::text, s.student_id, s.first_name, s.last_name, s.school, s.graduation_year, null::text, null::int, s.email, s.phone, true
+      from Students s
+      union all
+      select 'judge'::text, j.judge_id, j.first_name, j.last_name, j.school, null::int, j.certification, null::int, j.email, j.phone, true
+      from Judges j
+      union all
+      select 'coach'::text, c.coach_id, c.first_name, c.last_name, c.school, null::int, null::text, c.years_experience, c.email, c.phone, true
+      from Coaches c;
+    return;
+  end if;
+
+  return query
+  with active_debates as (
+    select d.debate_id
+    from Debate d
+    where lower(coalesce(d.status, 'scheduled')) not in ('completed', 'finished')
+      and coalesce(d.debate_date, current_date) >= current_date
+  ),
+  viewer_student as (
+    select s.student_id
+    from Students s
+    where s.auth_user_id = viewer_uid
+       or lower(s.email) = viewer_email
+  ),
+  viewer_judge as (
+    select j.judge_id
+    from Judges j
+    where j.auth_user_id = viewer_uid
+       or lower(j.email) = viewer_email
+  ),
+  viewer_coach as (
+    select c.coach_id
+    from Coaches c
+    where c.auth_user_id = viewer_uid
+       or lower(c.email) = viewer_email
+  ),
+  viewer_debates as (
+    select sp.debate_id
+    from S_Participation sp
+    join viewer_student vs on vs.student_id = sp.student_id
+    join active_debates ad on ad.debate_id = sp.debate_id
+    union
+    select jp.debate_id
+    from J_Participation jp
+    join viewer_judge vj on vj.judge_id = jp.judge_id
+    join active_debates ad on ad.debate_id = jp.debate_id
+    union
+    select cp.debate_id
+    from C_Participation cp
+    join viewer_coach vc on vc.coach_id = cp.coach_id
+    join active_debates ad on ad.debate_id = cp.debate_id
+  ),
+  shared_students as (
+    select distinct s.student_id, s.first_name, s.last_name, s.school, s.graduation_year
+    from S_Participation sp
+    join viewer_debates vd on vd.debate_id = sp.debate_id
+    join Students s on s.student_id = sp.student_id
+  ),
+  shared_judges as (
+    select distinct j.judge_id, j.first_name, j.last_name, j.school, j.certification
+    from J_Participation jp
+    join viewer_debates vd on vd.debate_id = jp.debate_id
+    join Judges j on j.judge_id = jp.judge_id
+  ),
+  shared_coaches as (
+    select distinct c.coach_id, c.first_name, c.last_name, c.school, c.years_experience
+    from C_Participation cp
+    join viewer_debates vd on vd.debate_id = cp.debate_id
+    join Coaches c on c.coach_id = cp.coach_id
+  )
+  select 'student'::text, ss.student_id, ss.first_name, ss.last_name, ss.school, ss.graduation_year, null::text, null::int, null::text, null::text, false
+  from shared_students ss
+  union all
+  select 'judge'::text, sj.judge_id, sj.first_name, sj.last_name, sj.school, null::int, sj.certification, null::int, null::text, null::text, false
+  from shared_judges sj
+  union all
+  select 'coach'::text, sc.coach_id, sc.first_name, sc.last_name, sc.school, null::int, null::text, sc.years_experience, null::text, null::text, false
+  from shared_coaches sc;
+end;
+$$;
+
+create or replace function public.get_user_debate_history(target_account_type text, target_account_id uuid)
+returns table (
+  debate_id uuid,
+  debate_date date,
+  debate_status text,
+  tournament_name text,
+  round_name text,
+  debate_type text,
+  room text,
+  topic text,
+  role_context text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+  viewer_owns_account boolean := false;
+  normalized_type text := lower(coalesce(target_account_type, ''));
+begin
+  if viewer_uid is null then
+    return;
+  end if;
+
+  select exists (
+    select 1
+    from Administrator a
+    where a.auth_user_id = viewer_uid
+      or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if not viewer_is_admin then
+    if normalized_type = 'student' then
+      select exists (
+        select 1 from Students s
+        where s.student_id = target_account_id
+          and (s.auth_user_id = viewer_uid or lower(s.email) = viewer_email)
+      ) into viewer_owns_account;
+    elsif normalized_type = 'judge' then
+      select exists (
+        select 1 from Judges j
+        where j.judge_id = target_account_id
+          and (j.auth_user_id = viewer_uid or lower(j.email) = viewer_email)
+      ) into viewer_owns_account;
+    elsif normalized_type = 'coach' then
+      select exists (
+        select 1 from Coaches c
+        where c.coach_id = target_account_id
+          and (c.auth_user_id = viewer_uid or lower(c.email) = viewer_email)
+      ) into viewer_owns_account;
+    end if;
+
+    if not viewer_owns_account then
+      raise exception 'Access denied.' using errcode = '42501';
+    end if;
+  end if;
+
+  if normalized_type = 'student' then
+    return query
+    select
+      d.debate_id,
+      d.debate_date,
+      d.status,
+      t.name,
+      tr.round_name,
+      tr.debate_type,
+      coalesce(d.room, tr.room),
+      d.topic,
+      format('Team %s • %s', sp.team_number, coalesce(sp.debate_stance, 'TBD'))
+    from S_Participation sp
+    join Debate d on d.debate_id = sp.debate_id
+    left join Tournament t on t.tournament_id = d.tournament_id
+    left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    where sp.student_id = target_account_id
+    order by d.debate_date desc, d.debate_time desc nulls last;
+  elsif normalized_type = 'judge' then
+    return query
+    select
+      d.debate_id,
+      d.debate_date,
+      d.status,
+      t.name,
+      tr.round_name,
+      tr.debate_type,
+      coalesce(d.room, tr.room),
+      d.topic,
+      coalesce(jp.ruling, 'No ruling submitted')
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    left join Tournament t on t.tournament_id = d.tournament_id
+    left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    where jp.judge_id = target_account_id
+    order by d.debate_date desc, d.debate_time desc nulls last;
+  elsif normalized_type = 'coach' then
+    return query
+    select
+      d.debate_id,
+      d.debate_date,
+      d.status,
+      t.name,
+      tr.round_name,
+      tr.debate_type,
+      coalesce(d.room, tr.room),
+      d.topic,
+      coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number))
+    from C_Participation cp
+    join Debate d on d.debate_id = cp.debate_id
+    left join Tournament t on t.tournament_id = d.tournament_id
+    left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    where cp.coach_id = target_account_id
+    order by d.debate_date desc, d.debate_time desc nulls last;
+  else
+    raise exception 'Unsupported account type: %', target_account_type using errcode = '22023';
+  end if;
+end;
+$$;
+
+grant execute on function public.get_visible_profiles_for_user() to authenticated;
+grant execute on function public.get_user_debate_history(text, uuid) to authenticated;
+
+create or replace function public.get_judge_bias_stats(target_judge_id uuid)
+returns table (
+  decided_count int,
+  affirmative_wins int,
+  negative_wins int,
+  affirmative_pct numeric,
+  lean_label text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+  aff_count int := 0;
+  neg_count int := 0;
+  total int := 0;
+  aff_pct numeric := 50;
+begin
+  if viewer_uid is null then
+    return;
+  end if;
+
+  select exists (
+    select 1 from Administrator a
+    where a.auth_user_id = viewer_uid or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if not viewer_is_admin then
+    raise exception 'Only administrators can view judge bias statistics.' using errcode = '42501';
+  end if;
+
+  with last_30 as (
+    select jp.ruling
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = target_judge_id
+      and jp.ruling is not null
+      and trim(jp.ruling) <> ''
+      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+    order by d.debate_date desc nulls last, d.debate_time desc nulls last
+    limit 30
+  )
+  select
+    count(*)::int,
+    count(*) filter (where lower(ruling) like '%affirmative%')::int,
+    count(*) filter (where lower(ruling) like '%negative%')::int
+  into total, aff_count, neg_count
+  from last_30;
+
+  if total = 0 then
+    return query select 0::int, 0::int, 0::int, 50.0::numeric, 'No rulings on record'::text;
+    return;
+  end if;
+
+  aff_pct := round((aff_count::numeric / total::numeric) * 100, 1);
+
+  return query
+  select
+    total,
+    aff_count,
+    neg_count,
+    aff_pct,
+    case
+      when aff_pct >= 80 then 'Strong affirmative lean'
+      when aff_pct >= 65 then 'Moderate affirmative lean'
+      when aff_pct >= 55 then 'Slight affirmative lean'
+      when aff_pct <= 20 then 'Strong negative lean'
+      when aff_pct <= 35 then 'Moderate negative lean'
+      when aff_pct <= 45 then 'Slight negative lean'
+      else 'Neutral / Balanced'
+    end;
+end;
+$$;
+
+grant execute on function public.get_judge_bias_stats(uuid) to authenticated;

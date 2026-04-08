@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DebateHub | Debate History</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page page-history" data-user-history>
+    <div class="debates-shell">
+        <aside class="debates-sidebar">
+            <div class="sidebar-top">
+                <p class="eyebrow">DebateHub</p>
+                <div class="sidebar-card">
+                    <p class="hero-card-title" data-sidebar-title>Debate history</p>
+                    <p class="hero-card-body" data-sidebar-body>Your complete debate record — all rounds from every tournament.</p>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" aria-label="Site">
+                <a class="sidebar-nav-item" href="debates.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    My Debates
+                </a>
+                <a class="sidebar-nav-item" href="profiles.html" data-nav-admin-only hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Profile directory
+                </a>
+                <a class="sidebar-nav-item" href="settings.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    Profile settings
+                </a>
+                <a class="sidebar-nav-item sidebar-nav-signout" data-signout href="index.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                </a>
+            </nav>
+        </aside>
+
+        <main class="debates-main">
+            <header class="debates-header directory-header">
+                <div>
+                    <p class="section-kicker" data-history-kicker>My History</p>
+                    <h2 data-history-title>My debate history</h2>
+                    <p class="section-copy" data-history-copy>All debates linked to your account.</p>
+                </div>
+                <a class="ghost-button history-back-link" data-back-link href="debates.html">Back to my debates</a>
+            </header>
+
+            <p class="status-text" data-history-message aria-live="polite"></p>
+
+            <section class="judge-bias-panel" data-judge-bias-panel hidden>
+                <header class="bias-panel-header">
+                    <h3 class="bias-panel-title">Judge consistency analysis</h3>
+                    <span class="admin-badge">Admin only</span>
+                </header>
+                <p class="bias-window-note">Score based on last 30 decided rounds — <strong data-bias-decided>0</strong> ruling(s) in window.</p>
+                <div class="bias-chart">
+                    <div class="bias-bar-group">
+                        <div class="bias-bar-label">
+                            <span class="bias-side affirmative-side">Affirmative wins</span>
+                            <span class="bias-count" data-bias-aff-count>0</span>
+                        </div>
+                        <div class="bias-track">
+                            <div class="bias-fill affirmative-fill" data-bias-bar-aff style="width: 50%"></div>
+                        </div>
+                        <span class="bias-pct" data-bias-aff-pct>50%</span>
+                    </div>
+                    <div class="bias-bar-group">
+                        <div class="bias-bar-label">
+                            <span class="bias-side negative-side">Negative wins</span>
+                            <span class="bias-count" data-bias-neg-count>0</span>
+                        </div>
+                        <div class="bias-track">
+                            <div class="bias-fill negative-fill" data-bias-bar-neg style="width: 50%"></div>
+                        </div>
+                        <span class="bias-pct" data-bias-neg-pct>50%</span>
+                    </div>
+                </div>
+                <div class="bias-conclusion">
+                    <span class="bias-lean-dot" data-bias-indicator></span>
+                    <p class="bias-lean-label" data-bias-label>–</p>
+                </div>
+            </section>
+
+            <section class="past-debate-list" data-history-results></section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

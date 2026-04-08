@@ -35,8 +35,12 @@
                     <p class="section-kicker">Profile settings</p>
                     <h2 data-settings-name>Loading profile</h2>
                     <p class="section-copy" data-settings-copy>Update your profile details and account information.</p>
+                    <p class="status-text" data-settings-context aria-live="polite"></p>
                 </div>
-                <button class="primary-button" type="submit" form="settings-form">Save changes</button>
+                <div class="settings-header-actions">
+                    <a class="ghost-button history-back-link" data-settings-history-link href="#" hidden>View debate history</a>
+                    <button class="primary-button" data-settings-save-button type="submit" form="settings-form">Save changes</button>
+                </div>
             </div>
 
             <form id="settings-form" class="settings-grid" data-settings-form action="#" method="post">
@@ -160,6 +164,30 @@
 
                 <p data-settings-message aria-live="polite"></p>
             </form>
+
+            <section class="panel-card section-card network-section" data-network-section>
+                <div class="section-heading">
+                    <h3 data-network-title>Connected profiles</h3>
+                    <p data-network-copy>View profile details for people you are currently debating with. Completed debates do not allow profile access between participants.</p>
+                </div>
+
+                <div class="auth-tabs directory-tabs network-tabs" role="tablist" aria-label="Connected profile categories">
+                    <button class="auth-tab is-active" type="button" role="tab" aria-selected="true" data-network-tab="student">Students</button>
+                    <button class="auth-tab" type="button" role="tab" aria-selected="false" data-network-tab="judge">Judges</button>
+                    <button class="auth-tab" type="button" role="tab" aria-selected="false" data-network-tab="coach">Coaches</button>
+                </div>
+
+                <form class="directory-search network-search" data-network-search-form action="#" method="get">
+                    <label class="field">
+                        <span>Search profiles</span>
+                        <input type="search" data-network-search-input placeholder="Search by name or school">
+                    </label>
+                    <button class="primary-button" type="submit">Search</button>
+                </form>
+
+                <p class="status-text" data-network-message aria-live="polite"></p>
+                <div class="directory-grid network-grid" data-network-results></div>
+            </section>
         </main>
     </div>
 

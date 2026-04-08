@@ -5,6 +5,8 @@ Static frontend pages for a debate team website, now wired for Supabase auth/dat
 ## Pages
 
 - index.html: login page (Supabase email/password sign-in)
+- profiles.html: admin-only profile directory (search students/judges/coaches)
+- user-history.html: admin-only page for viewing a selected user's debate history
 - debates.html: authenticated debates dashboard (reads Debate rows)
 - settings.html: authenticated profile settings (upserts Students row)
 
