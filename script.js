@@ -199,7 +199,7 @@ function sanitizeUuid(value) {
 }
 
 function isValidEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
+    return /^[a-z0-9](?:[a-z0-9._+%-]{0,62}[a-z0-9])?@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(String(value || ""));
 }
 
 function toPositiveInt(value, fallback = null) {
@@ -1242,8 +1242,9 @@ async function handleSettingsForm() {
     settingsForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
+        const emailField = settingsForm.querySelector('input[name="email"]');
         const fullName = sanitizeText(settingsForm.querySelector('input[name="full-name"]')?.value || "", 120);
-        const email = sanitizeEmail(settingsForm.querySelector('input[name="email"]')?.value || "");
+        const email = sanitizeEmail(emailField?.value || "");
         const schoolValue = sanitizeText(settingsForm.querySelector('input[name="school"]')?.value || "", 120);
         const phoneValue = sanitizePhone(settingsForm.querySelector('input[name="phone"]')?.value || "");
         const emergencyContactValue = sanitizeText(settingsForm.querySelector('input[name="emergency-contact"]')?.value || "", 160);
@@ -1259,6 +1260,14 @@ async function handleSettingsForm() {
         if (!email || !firstName) {
             setMessage(messageEl, "Full name and email are required.", true);
             return;
+        }
+
+        if (emailField) {
+            emailField.value = email;
+            if (!emailField.checkValidity()) {
+                setMessage(messageEl, "Please enter a valid email address.", true);
+                return;
+            }
         }
 
         if (!isValidEmail(email)) {
@@ -1290,8 +1299,18 @@ async function handleSettingsForm() {
         const existingProfile = await getCurrentProfile(user);
         const accountType = normalizeAccountType(existingProfile?.accountType || user.user_metadata?.account_type);
         const profileConfig = PROFILE_CONFIG[accountType];
+        const currentAuthEmail = sanitizeEmail(user.email || "");
+        const authEmailChanged = Boolean(email) && email !== currentAuthEmail;
 
         setMessage(messageEl, "Saving profile...", false);
+
+        if (authEmailChanged) {
+            const emailUpdate = await supabaseClient.auth.updateUser({ email });
+            if (emailUpdate.error) {
+                setMessage(messageEl, `Email update failed: ${emailUpdate.error.message}`, true);
+                return;
+            }
+        }
 
         const payload = {
             auth_user_id: user.id,
@@ -1326,14 +1345,6 @@ async function handleSettingsForm() {
         if (error) {
             setMessage(messageEl, error.message, true);
             return;
-        }
-
-        if (email !== user.email) {
-            const emailUpdate = await supabaseClient.auth.updateUser({ email });
-            if (emailUpdate.error) {
-                setMessage(messageEl, `Profile saved, but email update failed: ${emailUpdate.error.message}`, true);
-                return;
-            }
         }
 
         if (newPassword) {
