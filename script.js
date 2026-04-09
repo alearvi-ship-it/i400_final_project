@@ -2657,6 +2657,42 @@ async function setupSignOut() {
     });
 }
 
+function setupBackButtons() {
+    const backButtons = document.querySelectorAll("[data-back-button]");
+    if (!backButtons.length) {
+        return;
+    }
+
+    const currentPath = String(window.location.pathname || "").split("/").pop() || "index.html";
+    const fallbackByPage = {
+        "index.html": "index.html",
+        "debates.html": "settings.html",
+        "settings.html": "debates.html",
+        "profiles.html": "debates.html",
+        "policy-setup.html": "profiles.html",
+        "user-history.html": "debates.html"
+    };
+    const fallback = fallbackByPage[currentPath] || "debates.html";
+
+    backButtons.forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+
+            const referrer = document.referrer;
+            const hasValidReferrer = Boolean(referrer)
+                && referrer.startsWith(window.location.origin)
+                && referrer !== window.location.href;
+
+            if (window.history.length > 1 && hasValidReferrer) {
+                window.history.back();
+                return;
+            }
+
+            window.location.href = fallback;
+        });
+    });
+}
+
 handleLoginForm();
 handleSettingsForm();
 handleProfileNetworkSection();
@@ -2665,3 +2701,4 @@ handleAdminDirectoryPage();
 handleUserHistoryPage();
 handlePolicySetupPage();
 setupSignOut();
+setupBackButtons();
