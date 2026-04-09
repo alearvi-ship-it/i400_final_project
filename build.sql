@@ -162,6 +162,11 @@ create table if not exists Administrator (
   updated_at timestamptz not null default now()
 );
 
+-- Backfill schema updates for existing deployments.
+alter table if exists Students add column if not exists emergency_contact text;
+alter table if exists Judges add column if not exists emergency_contact text;
+alter table if exists Coaches add column if not exists emergency_contact text;
+
 create table if not exists Tournament (
   tournament_id uuid primary key default gen_random_uuid(),
   name text not null,
