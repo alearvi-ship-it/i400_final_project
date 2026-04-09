@@ -797,6 +797,30 @@ using (
   or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
 );
 
+drop policy if exists administrator_insert_own on Administrator;
+create policy administrator_insert_own
+on Administrator
+for insert
+to authenticated
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
+drop policy if exists administrator_update_own on Administrator;
+create policy administrator_update_own
+on Administrator
+for update
+to authenticated
+using (
+  auth.uid() = auth_user_id
+  or (auth_user_id is null and lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email))
+)
+with check (
+  auth.uid() = auth_user_id
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower(email)
+);
+
 drop policy if exists coaches_insert_own on Coaches;
 create policy coaches_insert_own
 on Coaches
