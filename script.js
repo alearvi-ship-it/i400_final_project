@@ -240,16 +240,34 @@ function setFormDisabled(formElement, disabled) {
     });
 }
 
+function navigateToProfileSettings(profileType, profileId) {
+    try {
+        sessionStorage.setItem("settingsTarget", JSON.stringify({ profileType, profileId }));
+    } catch {}
+    window.location.href = "settings.html";
+}
+
+function navigateToUserHistory(type, id, name) {
+    try {
+        sessionStorage.setItem("historyTarget", JSON.stringify({ type, id, name }));
+    } catch {}
+    window.location.href = "user-history.html";
+}
+
 function getSettingsQueryTarget() {
-    const params = new URLSearchParams(window.location.search);
-    const profileType = normalizeRoleType(params.get("profileType"));
-    const profileId = String(params.get("profileId") || "").trim();
-
-    if (!profileId) {
-        return null;
-    }
-
-    return { profileType, profileId };
+    try {
+        const stored = sessionStorage.getItem("settingsTarget");
+        if (stored) {
+            sessionStorage.removeItem("settingsTarget");
+            const parsed = JSON.parse(stored);
+            const profileType = normalizeRoleType(String(parsed.profileType || ""));
+            const profileId = String(parsed.profileId || "").trim();
+            if (profileId) {
+                return { profileType, profileId };
+            }
+        }
+    } catch {}
+    return null;
 }
 
 function formatRoleSpecificValue(roleType, profile) {
@@ -637,8 +655,14 @@ function renderDirectoryCard(type, profile) {
             <p><strong>Phone:</strong> ${escapeHtml(phone)}</p>
             <p><strong>${escapeHtml(metaLabel)}:</strong> ${escapeHtml(metaValue)}</p>
         </div>
-        <a class="ghost-button profile-open-link" href="settings.html?profileType=${encodeURIComponent(DIRECTORY_TABS[type].accountType)}&profileId=${encodeURIComponent(profile[DIRECTORY_TABS[type].idColumn])}">Open profile</a>
+        <button class="ghost-button profile-open-link" type="button">Open profile</button>
     `;
+
+    const navAccountType = DIRECTORY_TABS[type].accountType;
+    const navProfileId = profile[DIRECTORY_TABS[type].idColumn];
+    article.querySelector(".profile-open-link")?.addEventListener("click", () => {
+        navigateToProfileSettings(navAccountType, navProfileId);
+    });
 
     return article;
 }
@@ -663,8 +687,9 @@ function renderNetworkCard(profile, isAdminMode) {
         details.push(`<p><strong>Phone:</strong> ${escapeHtml(profile.phone || "No phone on file")}</p>`);
     }
 
-    const historyLink = isAdminMode && profile.can_view_history
-        ? `<a class="ghost-button profile-history-link" href="user-history.html?type=${encodeURIComponent(roleType)}&id=${encodeURIComponent(profile.account_id)}&name=${encodeURIComponent(fullName)}">View debate history</a>`
+    const canViewHistory = isAdminMode && profile.can_view_history;
+    const historyLinkHtml = canViewHistory
+        ? `<button class="ghost-button profile-history-link" type="button">View debate history</button>`
         : `<button class="ghost-button profile-history-link" type="button" disabled aria-disabled="true" title="Only administrators can view debate history.">View debate history</button>`;
 
     article.innerHTML = `
@@ -678,8 +703,14 @@ function renderNetworkCard(profile, isAdminMode) {
         <div class="directory-card-body">
             ${details.join("\n")}
         </div>
-        ${historyLink}
+        ${historyLinkHtml}
     `;
+
+    if (canViewHistory) {
+        article.querySelector(".profile-history-link")?.addEventListener("click", () => {
+            navigateToUserHistory(roleType, profile.account_id, fullName);
+        });
+    }
 
     return article;
 }
@@ -1144,8 +1175,12 @@ async function handleSettingsForm() {
 
         if (historyLink) {
             const displayName = [targetProfile.first_name, targetProfile.last_name].filter(Boolean).join(" ") || targetProfile.email || "User";
-            historyLink.href = `user-history.html?type=${encodeURIComponent(target.profileType)}&id=${encodeURIComponent(target.profileId)}&name=${encodeURIComponent(displayName)}`;
+            historyLink.href = "#";
             historyLink.hidden = false;
+            historyLink.addEventListener("click", (event) => {
+                event.preventDefault();
+                navigateToUserHistory(target.profileType, target.profileId, displayName);
+            });
         }
 
         if (contextEl) {
@@ -1471,10 +1506,19 @@ async function handleUserHistoryPage() {
 
     updateSidebarNavigation(isAdmin);
 
-    const params = new URLSearchParams(window.location.search);
-    const paramType = normalizeRoleType(params.get("type"));
-    const paramId = sanitizeUuid(params.get("id") || "");
-    const paramName = sanitizeText(params.get("name") || "User", 120);
+    let paramType = "student";
+    let paramId = "";
+    let paramName = "User";
+    try {
+        const stored = sessionStorage.getItem("historyTarget");
+        if (stored) {
+            sessionStorage.removeItem("historyTarget");
+            const parsed = JSON.parse(stored);
+            paramType = normalizeRoleType(String(parsed.type || ""));
+            paramId = sanitizeUuid(String(parsed.id || ""));
+            paramName = sanitizeText(String(parsed.name || "User"), 120);
+        }
+    } catch {}
 
     let targetType, targetId, targetName, isSelfView;
     let isAdminManagedHistory = false;
@@ -1561,8 +1605,12 @@ async function handleUserHistoryPage() {
             backLinkEl.href = "debates.html";
             backLinkEl.textContent = "Back to my debates";
         } else {
-            backLinkEl.href = `settings.html?profileType=${encodeURIComponent(targetType)}&profileId=${encodeURIComponent(targetId)}`;
+            backLinkEl.href = "#";
             backLinkEl.textContent = "Back to profile";
+            backLinkEl.addEventListener("click", (event) => {
+                event.preventDefault();
+                navigateToProfileSettings(targetType, targetId);
+            });
         }
     }
 
