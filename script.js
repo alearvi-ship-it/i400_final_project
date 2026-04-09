@@ -1485,6 +1485,7 @@ async function handleUserHistoryPage() {
     const kickerEl = document.querySelector("[data-history-kicker]");
     const biasPanelEl = document.querySelector("[data-judge-bias-panel]");
     const backLinkEl = document.querySelector("[data-back-link]");
+    const pageBackButton = document.querySelector("[data-back-button]");
     const sidebarTitleEl = document.querySelector("[data-sidebar-title]");
     const sidebarBodyEl = document.querySelector("[data-sidebar-body]");
     if (!pageRoot || !resultsRoot) {
@@ -1611,6 +1612,18 @@ async function handleUserHistoryPage() {
                 event.preventDefault();
                 navigateToProfileSettings(targetType, targetId);
             });
+        }
+    }
+
+    if (pageBackButton) {
+        if (isSelfView) {
+            pageBackButton.removeAttribute("data-back-profile-type");
+            pageBackButton.removeAttribute("data-back-profile-id");
+            pageBackButton.setAttribute("data-back-fallback", "debates.html");
+        } else {
+            pageBackButton.setAttribute("data-back-profile-type", targetType);
+            pageBackButton.setAttribute("data-back-profile-id", targetId);
+            pageBackButton.setAttribute("data-back-fallback", "settings.html");
         }
     }
 
@@ -2678,6 +2691,16 @@ function setupBackButtons() {
         button.addEventListener("click", (event) => {
             event.preventDefault();
 
+            const explicitProfileType = normalizeRoleType(button.getAttribute("data-back-profile-type"));
+            const explicitProfileId = sanitizeUuid(button.getAttribute("data-back-profile-id") || "");
+            if (explicitProfileId) {
+                navigateToProfileSettings(explicitProfileType, explicitProfileId);
+                return;
+            }
+
+            const perButtonFallback = sanitizeText(button.getAttribute("data-back-fallback") || "", 64);
+            const fallbackRoute = perButtonFallback || fallback;
+
             const referrer = document.referrer;
             const hasValidReferrer = Boolean(referrer)
                 && referrer.startsWith(window.location.origin)
@@ -2688,7 +2711,7 @@ function setupBackButtons() {
                 return;
             }
 
-            window.location.href = fallback;
+            window.location.href = fallbackRoute;
         });
     });
 }
