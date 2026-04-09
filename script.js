@@ -183,7 +183,7 @@ function sanitizeEmail(value) {
 
 function sanitizeSearchInput(value) {
     const raw = sanitizeText(value, 80);
-    return raw.replace(/[^a-zA-Z0-9@.\-\s]/g, " ").replace(/\s+/g, " ").trim();
+    return raw.replace(/[^a-zA-Z0-9@._+%\-\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function sanitizePhone(value) {
@@ -715,21 +715,33 @@ async function loadDirectoryProfiles(type, searchText) {
         return { data: [], error: new Error("Directory is unavailable.") };
     }
 
-    let query = supabaseClient
+    const response = await supabaseClient
         .from(directoryConfig.table)
         .select(directoryConfig.selectColumns)
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true })
-        .limit(100);
+        .limit(500);
 
-    const trimmed = sanitizeSearchInput(searchText);
-    if (trimmed) {
-        const safeTerm = trimmed;
-        query = query.or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,email.ilike.%${safeTerm}%,school.ilike.%${safeTerm}%`);
+    if (response.error) {
+        return { data: [], error: response.error };
     }
 
-    const response = await query;
-    return { data: response.data || [], error: response.error || null };
+    const trimmed = sanitizeSearchInput(searchText).toLowerCase();
+    if (!trimmed) {
+        return { data: response.data || [], error: null };
+    }
+
+    const filtered = (response.data || []).filter((profile) => {
+        const haystack = [
+            profile.first_name,
+            profile.last_name,
+            profile.email,
+            profile.school
+        ].filter(Boolean).join(" ").toLowerCase();
+        return haystack.includes(trimmed);
+    });
+
+    return { data: filtered, error: null };
 }
 
 async function handleAdminDirectoryPage() {
@@ -835,6 +847,13 @@ async function handleAdminDirectoryPage() {
     });
 
     searchInput?.addEventListener("input", async () => {
+        const raw = searchInput.value;
+        const cleaned = raw.replace(/[^a-zA-Z0-9@._+%\-\s]/g, "");
+        if (cleaned !== raw) {
+            const cursorPos = searchInput.selectionStart - (raw.length - cleaned.length);
+            searchInput.value = cleaned;
+            searchInput.setSelectionRange(cursorPos, cursorPos);
+        }
         await refreshResults();
     });
 
@@ -1151,6 +1170,39 @@ async function handleSettingsForm() {
     }
 
     await preloadSettingsForm();
+
+    const settingsEmailInput = settingsForm.querySelector('input[name="email"]');
+    settingsEmailInput?.addEventListener("input", () => {
+        const raw = settingsEmailInput.value;
+        const cleaned = raw.replace(/[^a-zA-Z0-9@._+%\-]/g, "");
+        if (cleaned !== raw) {
+            const cursorPos = settingsEmailInput.selectionStart - (raw.length - cleaned.length);
+            settingsEmailInput.value = cleaned;
+            settingsEmailInput.setSelectionRange(cursorPos, cursorPos);
+        }
+    });
+
+    const settingsPhoneInput = settingsForm.querySelector('input[name="phone"]');
+    settingsPhoneInput?.addEventListener("input", () => {
+        const raw = settingsPhoneInput.value;
+        const cleaned = raw.replace(/[^0-9+\-]/g, "");
+        if (cleaned !== raw) {
+            const cursorPos = settingsPhoneInput.selectionStart - (raw.length - cleaned.length);
+            settingsPhoneInput.value = cleaned;
+            settingsPhoneInput.setSelectionRange(cursorPos, cursorPos);
+        }
+    });
+
+    const settingsEmergencyInput = settingsForm.querySelector('input[name="emergency-contact"]');
+    settingsEmergencyInput?.addEventListener("input", () => {
+        const raw = settingsEmergencyInput.value;
+        const cleaned = raw.replace(/[^0-9+\-]/g, "");
+        if (cleaned !== raw) {
+            const cursorPos = settingsEmergencyInput.selectionStart - (raw.length - cleaned.length);
+            settingsEmergencyInput.value = cleaned;
+            settingsEmergencyInput.setSelectionRange(cursorPos, cursorPos);
+        }
+    });
 
     settingsForm.addEventListener("submit", async (event) => {
         event.preventDefault();
