@@ -452,6 +452,34 @@ async function getProfileByIdentifier(accountType, accountId) {
     return response.data ? { ...response.data, accountType: profileConfig.accountType } : null;
 }
 
+async function getProfileByEmail(email) {
+    if (!supabaseClient || !email) {
+        return null;
+    }
+
+    for (const accountType of Object.keys(PROFILE_CONFIG)) {
+        const profileConfig = PROFILE_CONFIG[accountType];
+        const response = await runProfileSingleQuery(profileConfig, (columns) => {
+            return supabaseClient
+                .from(profileConfig.table)
+                .select(columns)
+                .eq("email", email)
+                .maybeSingle();
+        });
+
+        if (response.error) {
+            console.error(`[getProfileByEmail] Query failed for ${accountType}/${email}:`, response.error);
+            continue;
+        }
+
+        if (response.data) {
+            return { ...response.data, accountType: profileConfig.accountType };
+        }
+    }
+
+    return null;
+}
+
 function setGraduationFieldVisibility(settingsForm, accountType) {
     const gradYearField = settingsForm?.querySelector('input[name="grad-year"]')?.closest(".field");
     if (gradYearField) {
@@ -1299,10 +1327,24 @@ async function handleSettingsForm() {
         const existingProfile = await getCurrentProfile(user);
         const accountType = normalizeAccountType(existingProfile?.accountType || user.user_metadata?.account_type);
         const profileConfig = PROFILE_CONFIG[accountType];
+        const existingProfileId = existingProfile?.[profileConfig.idColumn] || null;
         const currentAuthEmail = sanitizeEmail(user.email || "");
         const authEmailChanged = Boolean(email) && email !== currentAuthEmail;
 
         setMessage(messageEl, "Saving profile...", false);
+
+        const matchingProfile = await getProfileByEmail(email);
+        if (matchingProfile) {
+            const matchingConfig = PROFILE_CONFIG[normalizeAccountType(matchingProfile.accountType)];
+            const matchingProfileId = matchingProfile?.[matchingConfig.idColumn] || null;
+            const isSameProfile = Boolean(existingProfileId) && matchingProfileId === existingProfileId;
+            const isSameAuthUser = Boolean(matchingProfile.auth_user_id) && matchingProfile.auth_user_id === user.id;
+
+            if (!isSameProfile && !isSameAuthUser) {
+                setMessage(messageEl, "That email address is already linked to another account.", true);
+                return;
+            }
+        }
 
         if (authEmailChanged) {
             const emailUpdate = await supabaseClient.auth.updateUser({ email });
@@ -1328,8 +1370,6 @@ async function handleSettingsForm() {
         if (accountType === "student") {
             payload.graduation_year = Number.isFinite(gradYear) ? gradYear : null;
         }
-
-        const existingProfileId = existingProfile?.[profileConfig.idColumn];
 
         const profileMutation = existingProfileId
             ? supabaseClient
