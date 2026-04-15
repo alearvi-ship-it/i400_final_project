@@ -1757,9 +1757,29 @@ async function handleUserHistoryPage() {
 
         if (biasResponse?.error) {
             console.error('Judge bias RPC error:', biasResponse.error);
-            renderJudgeBiasPanel(biasPanelEl, null, targetName);
-            if (noteEl) {
-                noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
+            // For debugging, show sample data if it's a development environment
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log('Development mode: showing sample analytics data');
+                const sampleStats = {
+                    decided_count: 5,
+                    affirmative_wins: 3,
+                    negative_wins: 2,
+                    affirmative_pct: 60.0,
+                    negative_pct: 40.0,
+                    consistency_avg: 0.0,
+                    consistency_sd: 0.0,
+                    consistency_label: 'Data available',
+                    lean_label: 'Slight affirmative lean'
+                };
+                renderJudgeBiasPanel(biasPanelEl, sampleStats, targetName);
+                if (noteEl) {
+                    noteEl.textContent = `Sample data shown for ${targetName} (RPC error: ${biasResponse.error.message}). Run populate_all_judge_analytics() in database to fix.`;
+                }
+            } else {
+                renderJudgeBiasPanel(biasPanelEl, null, targetName);
+                if (noteEl) {
+                    noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
+                }
             }
         } else {
             const judgeStats = getRpcSingleRow(biasResponse);
@@ -3012,3 +3032,24 @@ handleUserHistoryPage();
 handlePolicySetupPage();
 setupSignOut();
 setupBackButtons();
+
+// Debug function to populate judge analytics (call from console)
+window.populateJudgeAnalytics = async function() {
+    if (!supabaseClient) {
+        console.error('Supabase client not available');
+        return;
+    }
+
+    console.log('Populating judge analytics...');
+    try {
+        const result = await supabaseClient.rpc('populate_all_judge_analytics');
+        console.log('Analytics population result:', result);
+        if (result.error) {
+            console.error('Error populating analytics:', result.error);
+        } else {
+            console.log('Analytics populated successfully:', result.data);
+        }
+    } catch (error) {
+        console.error('Failed to populate analytics:', error);
+    }
+};

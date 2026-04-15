@@ -1694,3 +1694,37 @@ end;
 $$;
 
 grant execute on function public.get_judge_bias_stats(uuid) to authenticated;
+
+-- Manual function to populate all judge analytics (for testing/debugging)
+create or replace function public.populate_all_judge_analytics()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  judge_record record;
+  total_processed int := 0;
+begin
+  -- Only allow admins to run this
+  if not exists (
+    select 1 from Administrator a
+    where a.auth_user_id = auth.uid() or lower(a.email) = auth.jwt() ->> 'email'
+  ) then
+    return 'Access denied: Only administrators can populate judge analytics.';
+  end if;
+
+  -- Clear existing analytics
+  delete from Judge_Consistency_Analytics;
+
+  -- Populate for each judge
+  for judge_record in select judge_id from Judges loop
+    perform public.refresh_judge_consistency_analytics(judge_record.judge_id);
+    total_processed := total_processed + 1;
+  end loop;
+
+  return format('Successfully processed analytics for %s judges.', total_processed);
+end;
+$$;
+
+grant execute on function public.populate_all_judge_analytics() to authenticated;
