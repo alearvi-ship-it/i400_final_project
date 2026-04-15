@@ -1229,7 +1229,7 @@ declare
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
 begin
-  if viewer_uid is null then
+  if viewer_uid is null and viewer_email = '' then
     return;
   end if;
 
@@ -1351,7 +1351,7 @@ declare
   viewer_owns_account boolean := false;
   normalized_type text := lower(coalesce(target_account_type, ''));
 begin
-  if viewer_uid is null then
+  if viewer_uid is null and viewer_email = '' then
     return;
   end if;
 
@@ -1655,6 +1655,7 @@ $$;
 
 grant execute on function public.create_policy_debate_setup(uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
+-- Admins can view judge consistency analytics; judges cannot self-view these stats.
 create or replace function public.get_judge_bias_stats(target_judge_id uuid)
 returns table (
   decided_count int,
@@ -1676,8 +1677,8 @@ declare
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
 begin
-  if viewer_uid is null then
-    return;
+  if viewer_uid is null and viewer_email = '' then
+    raise exception 'Authentication required.' using errcode = '42501';
   end if;
 
   select exists (
