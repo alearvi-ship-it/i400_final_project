@@ -563,10 +563,20 @@
       }
 
       async function refreshRoundsForTournament(tournamentId) {
+        const previousRoundId = els.round.value;
         const baseRounds = tournamentId
           ? state.records.rounds.filter((round) => String(round.tournament_id) === String(tournamentId))
           : state.records.rounds;
-        populateSelect(els.round, baseRounds, 'No round link', (r) => `Round ${r.round_number}${r.round_name ? ` — ${r.round_name}` : ''}`);
+        populateSelect(
+          els.round,
+          baseRounds,
+          'No round link',
+          (r) => `Round ${r.round_number}${r.round_name ? ` — ${r.round_name}` : ''}`,
+          (r) => r.tournament_round_id
+        );
+        if (baseRounds.some((round) => String(round.tournament_round_id) === String(previousRoundId))) {
+          els.round.value = previousRoundId;
+        }
       }
 
       function attachSelectOptions(row, kind) {
@@ -658,10 +668,15 @@
                 `School: ${data.school || 'n/a'}`,
                 `Cert: ${data.certification || 'n/a'}`,
               ]);
-              const { data: analytics } = await client.from(tableNames.analytics).select('*').eq('judge_id', selectedId).maybeSingle();
-              row.querySelector('[data-judge-consistency]').textContent = analytics
-                ? `${analytics.consistency_label} • ${analytics.lean_label} (${analytics.affirmative_pct}% affirmative, ${analytics.decided_count} decisions)`
-                : 'No consistency data';
+              try {
+                const { data: analytics } = await client.from(tableNames.analytics).select('*').eq('judge_id', selectedId).maybeSingle();
+                row.querySelector('[data-judge-consistency]').textContent = analytics
+                  ? `${analytics.consistency_label} • ${analytics.lean_label} (${analytics.affirmative_pct}% affirmative, ${analytics.decided_count} decisions)`
+                  : 'No consistency data';
+              } catch (analyticsError) {
+                console.warn('Judge consistency analytics unavailable', analyticsError);
+                row.querySelector('[data-judge-consistency]').textContent = 'No consistency data';
+              }
             }
 
             if (kind === 'coach') {
