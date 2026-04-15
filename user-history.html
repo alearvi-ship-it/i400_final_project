@@ -69,9 +69,25 @@
                 <p class="bias-window-note" data-bias-note>Loading performance data…</p>
                 
                 <div class="date-range-controls">
-                    <label for="date-range-slider">Analysis Time Range:</label>
-                    <input type="range" id="date-range-slider" min="0" max="365" value="0" step="30">
-                    <span id="date-range-label">All time</span>
+                    <div class="date-range-edge">
+                        <label for="range-start-date">Start</label>
+                        <input id="range-start-date" type="date" />
+                        <input id="range-start-time" type="time" />
+                    </div>
+                    <div class="date-range-slider-group">
+                        <label for="date-range-slider">Analysis Time Range</label>
+                        <input type="range" id="date-range-slider" min="0" max="1" value="0" step="1">
+                        <div class="range-labels">
+                            <span id="range-min-label">Earliest: —</span>
+                            <span id="range-max-label">Latest: —</span>
+                        </div>
+                        <span id="date-range-label">All time</span>
+                    </div>
+                    <div class="date-range-edge">
+                        <label for="range-end-date">End</label>
+                        <input id="range-end-date" type="date" />
+                        <input id="range-end-time" type="time" />
+                    </div>
                 </div>
                 
                 <div class="bias-chart">

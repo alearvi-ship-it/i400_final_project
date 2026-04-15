@@ -1745,7 +1745,13 @@ async function handleUserHistoryPage() {
         setMessage(messageEl, `Loaded ${records.length} debate history record(s).`, false);
     }
 
-async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null) {
+    if (!isSelfView && isAdmin && targetType === "judge" && biasPanelEl) {
+        biasPanelEl.hidden = false;
+        await loadJudgeAnalytics(targetId, targetName, biasPanelEl, records);
+    }
+}
+
+async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, historyRecords = []) {
     if (!biasPanelEl) {
         biasPanelEl = document.querySelector("[data-judge-bias-panel]");
     }
@@ -1771,41 +1777,123 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null) {
         noteEl.textContent = `Loading performance analytics for ${targetName}…`;
     }
 
-    // Set up date range slider (only if not already set up)
     const dateRangeSlider = document.getElementById('date-range-slider');
     const dateRangeLabel = document.getElementById('date-range-label');
-    
-    if (dateRangeSlider && dateRangeLabel && !dateRangeSlider.hasAttribute('data-initialized')) {
-        const updateLabel = () => {
-            const value = parseInt(dateRangeSlider.value);
-            if (value === 0) {
-                dateRangeLabel.textContent = 'All time';
-            } else {
-                dateRangeLabel.textContent = `Last ${value} days`;
-            }
-        };
-        
-        updateLabel(); // Set initial label
-        
-        dateRangeSlider.addEventListener('input', updateLabel);
-        dateRangeSlider.addEventListener('change', () => {
-            // Reload data when slider changes
-            loadJudgeAnalytics(targetId, targetName, biasPanelEl);
-        });
-        
-        dateRangeSlider.setAttribute('data-initialized', 'true');
-    }
+    const rangeMinLabel = document.getElementById('range-min-label');
+    const rangeMaxLabel = document.getElementById('range-max-label');
+    const startDateInput = document.getElementById('range-start-date');
+    const startTimeInput = document.getElementById('range-start-time');
+    const endDateInput = document.getElementById('range-end-date');
+    const endTimeInput = document.getElementById('range-end-time');
 
-    // Get current date range setting
-    const daysLimit = dateRangeSlider ? parseInt(dateRangeSlider.value) : null;
-    const daysParam = daysLimit && daysLimit > 0 ? daysLimit : null;
+    const parseInputDateTime = (dateEl, timeEl, fallback) => {
+        if (!dateEl || !dateEl.value) {
+            return fallback || null;
+        }
+        const timeValue = timeEl && timeEl.value ? timeEl.value : '00:00';
+        const value = `${dateEl.value}T${timeValue}`;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? (fallback || null) : parsed;
+    };
+
+    let selectedStart = parseInputDateTime(startDateInput, startTimeInput, null);
+    let selectedEnd = parseInputDateTime(endDateInput, endTimeInput, null);
+    if (selectedStart && selectedEnd && selectedEnd < selectedStart) {
+        selectedEnd = new Date(selectedStart.getTime());
+    }
 
     const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
         target_judge_id: targetId,
-        days_limit: daysParam
+        start_at: selectedStart ? selectedStart.toISOString() : null,
+        end_at: selectedEnd ? selectedEnd.toISOString() : null
     });
 
+    const setupRangeControls = (fullStart, fullEnd) => {
+        if (!dateRangeSlider || !dateRangeLabel || !rangeMinLabel || !rangeMaxLabel) {
+            return;
+        }
+
+        if (!fullStart || !fullEnd || fullEnd < fullStart) {
+            dateRangeSlider.disabled = true;
+            rangeMinLabel.textContent = 'Earliest: —';
+            rangeMaxLabel.textContent = 'Latest: —';
+            return;
+        }
+
+        const totalDays = Math.max(1, Math.round((fullEnd - fullStart) / 86400000));
+        dateRangeSlider.min = 0;
+        dateRangeSlider.max = totalDays;
+        dateRangeSlider.step = 1;
+
+        const defaultEnd = selectedEnd || fullEnd;
+        const sliderValue = Math.min(totalDays, Math.max(0, Math.round((defaultEnd - fullStart) / 86400000)));
+        dateRangeSlider.value = sliderValue;
+        dateRangeLabel.textContent = sliderValue === totalDays ? 'All time' : `Last ${sliderValue} days`;
+        rangeMinLabel.textContent = `Earliest: ${formatDateLabel(fullStart.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullStart.toISOString())}`;
+        rangeMaxLabel.textContent = `Latest: ${formatDateLabel(fullEnd.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullEnd.toISOString())}`;
+
+        const hasUserStart = startDateInput && startDateInput.value;
+        const hasUserEnd = endDateInput && endDateInput.value;
+
+        if (!hasUserStart) {
+            if (startDateInput) {
+                startDateInput.value = fullStart.toISOString().slice(0, 10);
+            }
+            if (startTimeInput) {
+                startTimeInput.value = fullStart.toISOString().slice(11, 16);
+            }
+        }
+
+        if (!hasUserEnd) {
+            if (endDateInput) {
+                endDateInput.value = defaultEnd.toISOString().slice(0, 10);
+            }
+            if (endTimeInput) {
+                endTimeInput.value = defaultEnd.toISOString().slice(11, 16);
+            }
+        }
+
+        if (!dateRangeSlider.hasAttribute('data-initialized')) {
+            const updateSliderLabel = () => {
+                const value = Number(dateRangeSlider.value);
+                dateRangeLabel.textContent = value === totalDays ? 'All time' : `Last ${value} days`;
+            };
+
+            dateRangeSlider.addEventListener('input', () => {
+                updateSliderLabel();
+                const offsetMs = Number(dateRangeSlider.value) * 86400000;
+                const newEnd = new Date(fullStart.getTime() + offsetMs);
+                if (endDateInput) {
+                    endDateInput.value = newEnd.toISOString().slice(0, 10);
+                }
+                if (endTimeInput) {
+                    endTimeInput.value = newEnd.toISOString().slice(11, 16);
+                }
+            });
+
+            dateRangeSlider.addEventListener('change', () => {
+                loadJudgeAnalytics(targetId, targetName, biasPanelEl, historyRecords);
+            });
+
+            const onDateInputChange = () => {
+                loadJudgeAnalytics(targetId, targetName, biasPanelEl, historyRecords);
+            };
+
+            startDateInput?.addEventListener('change', onDateInputChange);
+            startTimeInput?.addEventListener('change', onDateInputChange);
+            endDateInput?.addEventListener('change', onDateInputChange);
+            endTimeInput?.addEventListener('change', onDateInputChange);
+
+            dateRangeSlider.setAttribute('data-initialized', 'true');
+        }
+    };
+
     console.log('Judge bias RPC response:', biasResponse);
+
+    const judgeStats = getRpcSingleRow(biasResponse);
+    const rangeStart = judgeStats && judgeStats.range_start ? new Date(judgeStats.range_start) : null;
+    const rangeEnd = judgeStats && judgeStats.range_end ? new Date(judgeStats.range_end) : null;
+    setupRangeControls(rangeStart, rangeEnd);
 
     if (biasResponse?.error) {
         console.error('Judge bias RPC error:', biasResponse.error);
@@ -1834,7 +1922,6 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null) {
             }
         }
     } else {
-        const judgeStats = getRpcSingleRow(biasResponse);
         console.log('Judge stats extracted:', judgeStats);
         if (judgeStats) {
             renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
@@ -1845,7 +1932,6 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null) {
             }
         }
     }
-}
 }
 
 function getJudgeBiasErrorMessage(error, judgeName = "judge") {
@@ -1926,7 +2012,7 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     } else if (decided_count < 5) {
         noteText = `Limited data: Only ${decided_count} ruling(s) recorded for ${judgeName}. More comprehensive analytics available with additional rulings.`;
     } else {
-        noteText = `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window for ${judgeName}.`;
+        noteText = `${decided_count} ruling(s) recorded for ${judgeName} in the selected window.`;
     }
 
     const set = (selector, value) => {

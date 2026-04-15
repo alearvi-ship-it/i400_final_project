@@ -1328,7 +1328,7 @@ end;
 $$;
 
 drop function if exists public.get_user_debate_history(text, uuid);
-drop function if exists public.get_judge_bias_stats(uuid);
+drop function if exists public.get_judge_bias_stats(uuid,timestamptz,timestamptz);
 
 create or replace function public.get_user_debate_history(target_account_type text, target_account_id uuid)
 returns table (
@@ -1660,7 +1660,11 @@ $$;
 grant execute on function public.create_policy_debate_setup(uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
 -- Admins can view judge consistency analytics; judges cannot self-view these stats.
-create or replace function public.get_judge_bias_stats(target_judge_id uuid, days_limit int default null)
+create or replace function public.get_judge_bias_stats(
+  target_judge_id uuid,
+  start_at timestamptz default null,
+  end_at timestamptz default null
+)
 returns table (
   decided_count int,
   affirmative_wins int,
@@ -1670,7 +1674,9 @@ returns table (
   consistency_avg numeric,
   consistency_sd numeric,
   consistency_label text,
-  lean_label text
+  lean_label text,
+  range_start timestamptz,
+  range_end timestamptz
 )
 language plpgsql
 security definer
@@ -1681,7 +1687,6 @@ declare
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
   judge_exists boolean := false;
-  date_filter text := '';
 begin
   if viewer_uid is null and viewer_email = '' then
     raise exception 'Authentication required to view judge analytics.' using errcode = '42501';
@@ -1705,41 +1710,48 @@ begin
     raise exception 'Judge not found. The specified judge may have been removed or the ID is invalid.' using errcode = '23503';
   end if;
 
-  -- Build date filter if days_limit is provided
-  if days_limit is not null and days_limit > 0 then
-    date_filter := format(' and d.debate_date >= (current_date - interval ''%s days'')', days_limit);
-  end if;
-
   return query
-  execute format('
-  with filtered_rulings as (
+  with full_range as (
+    select
+      min((d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz) as full_start,
+      max((d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz) as full_end
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = target_judge_id
+      and jp.ruling is not null
+      and trim(jp.ruling) <> ''
+      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+  ),
+  filtered_rulings as (
     select jp.debate_id,
            jp.ruling,
            lower(trim(jp.ruling)) as ruling_text,
-           d.debate_date
+           d.debate_date,
+           d.debate_time
     from J_Participation jp
     join Debate d on d.debate_id = jp.debate_id
-    where jp.judge_id = $1
+    where jp.judge_id = target_judge_id
       and jp.ruling is not null
-      and trim(jp.ruling) <> ''''
-      and lower(trim(jp.ruling)) <> ''no ruling submitted''
-      %s
+      and trim(jp.ruling) <> ''
+      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+      and (start_at is null or (d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz >= start_at)
+      and (end_at is null or (d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz <= end_at)
     order by d.debate_date desc nulls last, d.debate_time desc nulls last
   ),
   fight_counts as (
     select
       count(*)::int as decided_count,
-      count(*) filter (where ruling_text like ''%%affirmative%%'')::int as affirmative_wins,
-      count(*) filter (where ruling_text like ''%%negative%%'')::int as negative_wins
+      count(*) filter (where ruling_text like '%%affirmative%%')::int as affirmative_wins,
+      count(*) filter (where ruling_text like '%%negative%%')::int as negative_wins
     from filtered_rulings
   ),
   monthly_stats as (
     select
-      date_trunc(''month'', debate_date) as month,
+      date_trunc('month', debate_date) as month,
       count(*) as monthly_count,
-      round(avg(case when ruling_text like ''%%affirmative%%'' then 1.0 else 0.0 end) * 100, 1) as monthly_aff_pct
+      round(avg(case when ruling_text like '%%affirmative%%' then 1.0 else 0.0 end) * 100, 1) as monthly_aff_pct
     from filtered_rulings
-    group by date_trunc(''month'', debate_date)
+    group by date_trunc('month', debate_date)
     having count(*) >= 3
   ),
   consistency_metrics as (
@@ -1760,22 +1772,22 @@ begin
       coalesce(cm.consistency_avg, 0.0) as consistency_avg,
       coalesce(cm.consistency_sd, 0.0) as consistency_sd,
       case
-        when fc.decided_count = 0 then ''No consistency data''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 70 then ''Liberal''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 60 then ''Moderate Liberal''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 30 then ''Conservative''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 40 then ''Moderate Conservative''
-        else ''Moderate''
+        when fc.decided_count = 0 then 'No consistency data'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 70 then 'Liberal'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 60 then 'Moderate Liberal'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 30 then 'Conservative'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 40 then 'Moderate Conservative'
+        else 'Moderate'
       end as consistency_label,
       case
-        when fc.decided_count = 0 then ''No rulings on record''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then ''Strong affirmative lean''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then ''Moderate affirmative lean''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then ''Slight affirmative lean''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then ''Strong negative lean''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then ''Moderate negative lean''
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then ''Slight negative lean''
-        else ''Neutral / Balanced''
+        when fc.decided_count = 0 then 'No rulings on record'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then 'Strong affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then 'Moderate affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then 'Slight affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then 'Strong negative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then 'Moderate negative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then 'Slight negative lean'
+        else 'Neutral / Balanced'
       end as lean_label
     from fight_counts fc
     cross join consistency_metrics cm
@@ -1789,13 +1801,15 @@ begin
     m.consistency_avg,
     m.consistency_sd,
     m.consistency_label,
-    m.lean_label
-  from metrics m', date_filter)
-  using target_judge_id;
+    m.lean_label,
+    fr.full_start as range_start,
+    fr.full_end as range_end
+  from metrics m
+  cross join full_range fr;
 end;
 $$;
 
-grant execute on function public.get_judge_bias_stats(uuid) to authenticated;
+grant execute on function public.get_judge_bias_stats(uuid,timestamptz,timestamptz) to authenticated;
 
 -- Manual function to populate all judge analytics (for testing/debugging)
 create or replace function public.populate_all_judge_analytics()
