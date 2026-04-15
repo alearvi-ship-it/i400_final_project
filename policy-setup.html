@@ -401,6 +401,23 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
   <script>
+    // Diagnostic: show error if Supabase client is not available
+    window.addEventListener('DOMContentLoaded', function() {
+      var form = document.querySelector('[data-policy-form]');
+      var message = document.querySelector('[data-policy-message]');
+      var supa = window.supabase && window.supabase.createClient;
+      var config = window.APP_CONFIG;
+      if (!supa || !config || !config.SUPABASE_URL || !config.SUPABASE_ANON_KEY || config.SUPABASE_URL.includes('YOUR_PROJECT_REF') || config.SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY')) {
+        if (form) form.style.display = 'none';
+        if (message) {
+          message.textContent = 'Critical error: Supabase client or config is missing. Check your network, Content Security Policy, and supabase-config.js.';
+          message.style.color = 'red';
+        }
+        return;
+      }
+    });
+  </script>
+  <script>
     (() => {
       const supabaseConfig = window.supabaseConfig || window.SUPABASE_CONFIG || {};
       const supabaseUrl = window.SUPABASE_URL || supabaseConfig.url || supabaseConfig.supabaseUrl;
