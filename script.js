@@ -1760,9 +1760,12 @@ function renderJudgeBiasPanel(panelEl, stats) {
         consistency_label = "Data unavailable",
         lean_label = "Bias data unavailable"
     } = stats || {};
-    const negPct = decided_count > 0
-        ? (100 - Number(affirmative_pct)).toFixed(1)
-        : "0.0";
+    const hasData = decided_count > 0;
+    const affPctText = hasData ? `${affirmative_pct}%` : "–";
+    const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "–";
+    const noteText = hasData
+        ? `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`
+        : "Judge ruling data is currently unavailable.";
 
     const set = (selector, value) => {
         const el = panelEl.querySelector(selector);
@@ -1771,28 +1774,30 @@ function renderJudgeBiasPanel(panelEl, stats) {
         }
     };
 
-    set("[data-bias-decided]", decided_count);
-    set("[data-bias-aff-count]", affirmative_wins);
-    set("[data-bias-neg-count]", negative_wins);
-    set("[data-bias-aff-pct]", `${affirmative_pct}%`);
-    set("[data-bias-neg-pct]", `${negPct}%`);
-    set("[data-bias-consistency-avg]", Number(consistency_avg || 0).toFixed(2));
-    set("[data-bias-consistency-sd]", Number(consistency_sd || 0).toFixed(2));
-    set("[data-bias-consistency-label]", consistency_label || "–");
-    set("[data-bias-label]", lean_label);
-    set("[data-bias-note]", decided_count > 0
-        ? `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`
-        : "Judge ruling data is currently unavailable.");
+    set("[data-bias-decided]", hasData ? decided_count : "–");
+    set("[data-bias-aff-count]", hasData ? affirmative_wins : "–");
+    set("[data-bias-neg-count]", hasData ? negative_wins : "–");
+    set("[data-bias-aff-pct]", affPctText);
+    set("[data-bias-neg-pct]", negPctText);
+    set("[data-bias-consistency-avg]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-label]", hasData ? consistency_label || "–" : "No consistency data");
+    set("[data-bias-label]", hasData ? lean_label : "Bias data is unavailable");
+
+    const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
+    if (noteEl) {
+        noteEl.textContent = noteText;
+    }
 
     const affBar = panelEl.querySelector("[data-bias-bar-aff]");
     const negBar = panelEl.querySelector("[data-bias-bar-neg]");
-    if (affBar) { affBar.style.width = `${affirmative_pct}%`; }
-    if (negBar) { negBar.style.width = `${negPct}%`; }
+    if (affBar) { affBar.style.width = hasData ? `${affirmative_pct}%` : "0%"; }
+    if (negBar) { negBar.style.width = hasData ? `${100 - Number(affirmative_pct)}%` : "0%"; }
 
     const indicatorEl = panelEl.querySelector("[data-bias-indicator]");
     if (indicatorEl) {
         const pct = Number(affirmative_pct);
-        const lean = decided_count === 0 ? "neutral"
+        const lean = !hasData ? "neutral"
             : pct >= 55 ? "aff"
             : pct <= 45 ? "neg"
             : "neutral";
@@ -2602,7 +2607,16 @@ async function handlePolicySetupPage() {
         if (!response || response.error || response.data == null) {
             return null;
         }
-        return Array.isArray(response.data) ? response.data[0] || null : response.data;
+
+        if (Array.isArray(response.data)) {
+            return response.data[0] || null;
+        }
+
+        if (typeof response.data === "object" && response.data !== null && Array.isArray(response.data.rows)) {
+            return response.data.rows[0] || null;
+        }
+
+        return response.data;
     }
 
     async function refreshJudgeRowConsistency(row) {
