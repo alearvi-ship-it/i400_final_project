@@ -17,9 +17,9 @@ if (toggleButton) {
 }
 
 const TABLES = {
-    students: "student",
-    judges: "judge",
-    coaches: "coach",
+    students: "students",
+    judges: "judges",
+    coaches: "coaches",
     administrator: "administrator",
     debate: "debate",
     tournament: "tournament",
