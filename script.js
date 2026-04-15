@@ -1743,7 +1743,7 @@ async function handleUserHistoryPage() {
         if (biasResponse?.error) {
             renderJudgeBiasPanel(biasPanelEl, null);
             if (noteEl) {
-                noteEl.textContent = `Judge consistency could not be loaded: ${biasResponse.error.message || 'Unknown error'}`;
+                noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error);
             }
         } else {
             const judgeStats = getRpcSingleRow(biasResponse);
@@ -1759,6 +1759,59 @@ async function handleUserHistoryPage() {
     }
 }
 
+function getJudgeBiasErrorMessage(error) {
+    if (!error) {
+        return "Judge consistency data is currently unavailable.";
+    }
+
+    const errorCode = error.code || '';
+    const errorMessage = error.message || '';
+
+    // Authentication/Permission errors
+    if (errorCode === '42501' || errorMessage.includes('administrator') || errorMessage.includes('permission') || errorMessage.includes('Access denied')) {
+        return "Access denied: Only administrators can view judge consistency analytics.";
+    }
+
+    // Authentication required
+    if (errorMessage.includes('Authentication required')) {
+        return "Authentication required: Please log in to view judge consistency data.";
+    }
+
+    // Invalid/missing judge ID
+    if (errorCode === '23502' || errorMessage.includes('Judge ID is required')) {
+        return "Invalid request: Judge ID is missing or invalid.";
+    }
+
+    // Judge not found
+    if (errorCode === '23503' || errorMessage.includes('Judge not found')) {
+        return "Judge not found: The selected judge may have been removed or the profile is invalid.";
+    }
+
+    // Network/Connection errors
+    if (errorCode === 'PGRST301' || errorMessage.includes('network') || errorMessage.includes('connection')) {
+        return "Connection error: Unable to load judge consistency data. Please check your internet connection.";
+    }
+
+    // Database errors
+    if (errorCode.startsWith('42') || errorCode.startsWith('23') || errorMessage.includes('database') || errorMessage.includes('relation')) {
+        return "Database error: Judge consistency data could not be retrieved. Please try again later.";
+    }
+
+    // Function execution errors
+    if (errorCode === 'PGRST116' || errorMessage.includes('function') || errorMessage.includes('procedure')) {
+        return "Processing error: Judge consistency analytics could not be calculated. Please contact support.";
+    }
+
+    // Timeout errors
+    if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+        return "Timeout error: Judge consistency data took too long to load. Please try refreshing the page.";
+    }
+
+    // Generic fallback with sanitized error message
+    const sanitizedMessage = errorMessage.replace(/[^\w\s.,!?-]/g, '').substring(0, 100);
+    return `Error loading judge consistency data: ${sanitizedMessage || 'Unknown error occurred'}`;
+}
+
 function renderJudgeBiasPanel(panelEl, stats) {
     const {
         decided_count = 0,
@@ -1770,12 +1823,22 @@ function renderJudgeBiasPanel(panelEl, stats) {
         consistency_label = "Data unavailable",
         lean_label = "Bias data unavailable"
     } = stats || {};
+
     const hasData = decided_count > 0;
     const affPctText = hasData ? `${affirmative_pct}%` : "–";
     const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "–";
-    const noteText = hasData
-        ? `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`
-        : "Judge ruling data is currently unavailable.";
+
+    // Determine appropriate note text based on data availability
+    let noteText;
+    if (!stats) {
+        noteText = "Judge consistency data is currently unavailable.";
+    } else if (!hasData) {
+        noteText = "This judge has no recorded rulings. Analytics will appear once rulings are submitted.";
+    } else if (decided_count < 5) {
+        noteText = `Limited data: Only ${decided_count} ruling(s) recorded. More comprehensive analytics available with additional rulings.`;
+    } else {
+        noteText = `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`;
+    }
 
     const set = (selector, value) => {
         const el = panelEl.querySelector(selector);
@@ -1792,7 +1855,7 @@ function renderJudgeBiasPanel(panelEl, stats) {
     set("[data-bias-consistency-avg]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
     set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
     set("[data-bias-consistency-label]", hasData ? consistency_label || "–" : "No consistency data");
-    set("[data-bias-label]", hasData ? lean_label : "Bias data is unavailable");
+    set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
 
     const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
     if (noteEl) {

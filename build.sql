@@ -1676,9 +1676,14 @@ declare
   viewer_uid uuid := auth.uid();
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
+  judge_exists boolean := false;
 begin
   if viewer_uid is null and viewer_email = '' then
-    raise exception 'Authentication required.' using errcode = '42501';
+    raise exception 'Authentication required to view judge analytics.' using errcode = '42501';
+  end if;
+
+  if target_judge_id is null then
+    raise exception 'Judge ID is required.' using errcode = '23502';
   end if;
 
   select exists (
@@ -1687,7 +1692,12 @@ begin
   ) into viewer_is_admin;
 
   if not viewer_is_admin then
-    raise exception 'Only administrators can view judge bias statistics.' using errcode = '42501';
+    raise exception 'Access denied: Only administrators can view judge consistency analytics.' using errcode = '42501';
+  end if;
+
+  select exists (select 1 from Judges where judge_id = target_judge_id) into judge_exists;
+  if not judge_exists then
+    raise exception 'Judge not found. The specified judge may have been removed or the ID is invalid.' using errcode = '23503';
   end if;
 
   perform public.refresh_judge_consistency_analytics(target_judge_id);
