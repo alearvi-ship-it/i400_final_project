@@ -333,6 +333,9 @@ create table if not exists Judge_Consistency_Analytics (
 create index if not exists idx_judge_consistency_aff_pct on Judge_Consistency_Analytics(affirmative_pct);
 create index if not exists idx_judge_consistency_sd on Judge_Consistency_Analytics(consistency_sd);
 
+drop function if exists public.refresh_judge_consistency_analytics(uuid);
+drop function if exists public.refresh_judge_consistency_analytics(uuid, int);
+
 create or replace function public.refresh_judge_consistency_analytics(p_judge_id uuid, p_days_limit int default null)
 returns void
 language plpgsql
@@ -429,8 +432,8 @@ begin
     m.consistency_sd,
     m.consistency_label,
     m.lean_label
-  into rec
   from metrics m', date_filter)
+  into rec
   using p_judge_id;
 
   insert into Judge_Consistency_Analytics (
@@ -1424,7 +1427,7 @@ begin
       coalesce(d.room, tr.room),
       d.topic,
       coalesce(jp.ruling, 'No ruling submitted'),
-      round(coalesce(consistency.consistency_score, 0.0), 3) as ruling_consistency_score,
+      round(consistency.consistency_score, 3) as ruling_consistency_score,
       case
         when consistency.consistency_score is null then 'No consistency data'
         when consistency.consistency_score > 0.15 then 'Liberal-leaning ruling'
@@ -1436,11 +1439,14 @@ begin
     left join Tournament t on t.tournament_id = d.tournament_id
     left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
     left join lateral (
-      select avg(case lower(sp.worldview)
-                  when 'conservative' then -1
-                  when 'liberal' then 1
-                  else 0
-                end)::numeric as consistency_score
+      select
+        case when count(*) = 0 then null
+             else round(avg(case lower(sp.worldview)
+                            when 'conservative' then -1
+                            when 'liberal' then 1
+                            else 0
+                          end), 3)
+        end::numeric as consistency_score
       from S_Participation sp
       where sp.debate_id = d.debate_id
         and (
