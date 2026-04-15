@@ -488,9 +488,22 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_refresh_judge_consistency_analytics on J_Participation;
+
 create trigger trg_refresh_judge_consistency_analytics
 after insert or update or delete on J_Participation
 for each row execute function public.refresh_judge_consistency_analytics_trigger();
+
+-- Pre-populate judge consistency analytics from existing judge rulings
+DO $$
+declare
+  current_judge record;
+begin
+  for current_judge in select judge_id from Judges loop
+    perform public.refresh_judge_consistency_analytics(current_judge.judge_id);
+  end loop;
+end;
+$$;
 
 create or replace function public.resolve_admin_actor()
 returns table (
