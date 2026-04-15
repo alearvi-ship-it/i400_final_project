@@ -365,28 +365,6 @@ begin
       count(*) filter (where ruling_text like '%negative%')::int as negative_wins
     from last_30
   ),
-  worldview_stats as (
-    select
-      avg(worldview_score)::numeric as consistency_avg,
-      stddev_pop(worldview_score)::numeric as consistency_sd,
-      count(*) as world_count
-    from (
-      select l.debate_id,
-             avg(case lower(sp.worldview)
-                   when 'conservative' then -1
-                   when 'liberal' then 1
-                   else 0
-                 end)::numeric as worldview_score
-      from last_30 l
-      join S_Participation sp on sp.debate_id = l.debate_id
-      where (
-        lower(sp.debate_stance) = 'affirmative' and l.ruling_text like '%affirmative%'
-      ) or (
-        lower(sp.debate_stance) = 'negative' and l.ruling_text like '%negative%'
-      )
-      group by l.debate_id
-    ) derived
-  ),
   metrics as (
     select
       fc.decided_count,
@@ -396,13 +374,11 @@ begin
         when fc.decided_count = 0 then 50.0
         else round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1)
       end::numeric(5,1) as affirmative_pct,
-      coalesce(round(ws.consistency_avg, 3), 0.0)::numeric(6,3) as consistency_avg,
-      coalesce(round(ws.consistency_sd, 3), 0.0)::numeric(6,3) as consistency_sd,
+      0.0::numeric(6,3) as consistency_avg,
+      0.0::numeric(6,3) as consistency_sd,
       case
         when fc.decided_count = 0 then 'No consistency data'
-        when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.25 then 'High consistency'
-        when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.6 then 'Moderate consistency'
-        else 'Mixed consistency'
+        else 'Data available'
       end as consistency_label,
       case
         when fc.decided_count = 0 then 'No rulings on record'
@@ -415,7 +391,6 @@ begin
         else 'Neutral / Balanced'
       end as lean_label
     from fight_counts fc
-    cross join worldview_stats ws
   )
   select
     m.decided_count,

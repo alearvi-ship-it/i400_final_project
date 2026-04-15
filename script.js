@@ -1753,13 +1753,17 @@ async function handleUserHistoryPage() {
             target_judge_id: targetId
         });
 
+        console.log('Judge bias RPC response:', biasResponse);
+
         if (biasResponse?.error) {
+            console.error('Judge bias RPC error:', biasResponse.error);
             renderJudgeBiasPanel(biasPanelEl, null, targetName);
             if (noteEl) {
                 noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
             }
         } else {
             const judgeStats = getRpcSingleRow(biasResponse);
+            console.log('Judge stats extracted:', judgeStats);
             if (judgeStats) {
                 renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
             } else {
@@ -1867,7 +1871,7 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-neg-pct]", negPctText);
     set("[data-bias-consistency-avg]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
     set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
-    set("[data-bias-consistency-label]", hasData ? consistency_label || "–" : "No consistency data");
+    set("[data-bias-consistency-label]", hasData ? (consistency_label === 'Data available' ? 'Available' : consistency_label) || "–" : "No consistency data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
 
     const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
