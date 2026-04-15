@@ -1693,17 +1693,17 @@ begin
 
   return query
   select
-    decided_count,
-    affirmative_wins,
-    negative_wins,
-    affirmative_pct,
-    round(100 - affirmative_pct, 1)::numeric,
-    consistency_avg,
-    consistency_sd,
-    consistency_label,
-    lean_label
-  from Judge_Consistency_Analytics
-  where judge_id = target_judge_id;
+    coalesce(j.decided_count, 0) as decided_count,
+    coalesce(j.affirmative_wins, 0) as affirmative_wins,
+    coalesce(j.negative_wins, 0) as negative_wins,
+    coalesce(j.affirmative_pct, 50.0) as affirmative_pct,
+    round(100 - coalesce(j.affirmative_pct, 50.0), 1)::numeric as negative_pct,
+    coalesce(j.consistency_avg, 0.0) as consistency_avg,
+    coalesce(j.consistency_sd, 0.0) as consistency_sd,
+    coalesce(j.consistency_label, 'No consistency data') as consistency_label,
+    coalesce(j.lean_label, 'No rulings on record') as lean_label
+  from (select target_judge_id) t
+  left join Judge_Consistency_Analytics j on j.judge_id = t.target_judge_id;
 end;
 $$;
 
