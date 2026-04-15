@@ -1731,19 +1731,29 @@ async function handleUserHistoryPage() {
 
     if (!isSelfView && isAdmin && targetType === "judge" && biasPanelEl) {
         biasPanelEl.hidden = false;
+        const noteEl = biasPanelEl.querySelector("[data-bias-note]") || biasPanelEl.querySelector(".bias-window-note");
+        if (noteEl) {
+            noteEl.textContent = "Loading judge consistency data…";
+        }
 
         const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
             target_judge_id: targetId
         });
 
-        const judgeStats = getRpcSingleRow(biasResponse);
-        if (judgeStats) {
-            renderJudgeBiasPanel(biasPanelEl, judgeStats);
-        } else {
+        if (biasResponse?.error) {
             renderJudgeBiasPanel(biasPanelEl, null);
-            const labelEl = biasPanelEl.querySelector("[data-bias-label]");
-            if (labelEl) {
-                labelEl.textContent = "Bias data is currently unavailable.";
+            if (noteEl) {
+                noteEl.textContent = `Judge consistency could not be loaded: ${biasResponse.error.message || 'Unknown error'}`;
+            }
+        } else {
+            const judgeStats = getRpcSingleRow(biasResponse);
+            if (judgeStats) {
+                renderJudgeBiasPanel(biasPanelEl, judgeStats);
+            } else {
+                renderJudgeBiasPanel(biasPanelEl, null);
+                if (noteEl) {
+                    noteEl.textContent = "Judge consistency data is currently unavailable.";
+                }
             }
         }
     }
