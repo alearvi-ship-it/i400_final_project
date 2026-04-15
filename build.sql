@@ -166,6 +166,8 @@ create table if not exists Administrator (
 alter table if exists Students add column if not exists emergency_contact text;
 alter table if exists Judges add column if not exists emergency_contact text;
 alter table if exists Coaches add column if not exists emergency_contact text;
+alter table if exists S_Participation add column if not exists worldview text not null default 'Moderate';
+alter table if exists S_Participation add constraint if not exists s_participation_worldview_check check (worldview in ('Conservative', 'Liberal', 'Moderate'));
 
 create table if not exists Tournament (
   tournament_id uuid primary key default gen_random_uuid(),
@@ -216,12 +218,14 @@ create table if not exists S_Participation (
   student_id uuid not null references Students(student_id) on delete cascade,
   team_number int not null,
   debate_stance text not null,
+  worldview text not null default 'Moderate',
   speaking_order int,
   is_captain boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint s_participation_team_number_check check (team_number > 0),
   constraint s_participation_speaking_order_check check (speaking_order is null or speaking_order > 0),
+  constraint s_participation_worldview_check check (worldview in ('Conservative', 'Liberal', 'Moderate')),
   constraint s_participation_unique unique (debate_id, student_id)
 );
 
@@ -1038,7 +1042,9 @@ returns table (
   debate_type text,
   room text,
   topic text,
-  role_context text
+  role_context text,
+  ruling_consistency_score numeric,
+  ruling_consistency_label text
 )
 language plpgsql
 security definer
@@ -1099,7 +1105,9 @@ begin
       tr.debate_type,
       coalesce(d.room, tr.room),
       d.topic,
-      format('Team %s • %s', sp.team_number, coalesce(sp.debate_stance, 'TBD'))
+      format('Team %s • %s', sp.team_number, coalesce(sp.debate_stance, 'TBD')),
+      null::numeric,
+      null::text
     from S_Participation sp
     join Debate d on d.debate_id = sp.debate_id
     left join Tournament t on t.tournament_id = d.tournament_id
@@ -1117,11 +1125,31 @@ begin
       tr.debate_type,
       coalesce(d.room, tr.room),
       d.topic,
-      coalesce(jp.ruling, 'No ruling submitted')
+      coalesce(jp.ruling, 'No ruling submitted'),
+      round(coalesce(consistency.consistency_score, 0.0), 3) as ruling_consistency_score,
+      case
+        when consistency.consistency_score is null then 'No consistency data'
+        when consistency.consistency_score > 0.15 then 'Liberal-leaning ruling'
+        when consistency.consistency_score < -0.15 then 'Conservative-leaning ruling'
+        else 'Moderate ruling'
+      end as ruling_consistency_label
     from J_Participation jp
     join Debate d on d.debate_id = jp.debate_id
     left join Tournament t on t.tournament_id = d.tournament_id
     left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    left join lateral (
+      select avg(case lower(sp.worldview)
+                  when 'conservative' then -1
+                  when 'liberal' then 1
+                  else 0
+                end)::numeric as consistency_score
+      from S_Participation sp
+      where sp.debate_id = d.debate_id
+        and (
+          (lower(sp.debate_stance) = 'affirmative' and lower(coalesce(jp.ruling, '')) like '%affirmative%')
+          or (lower(sp.debate_stance) = 'negative' and lower(coalesce(jp.ruling, '')) like '%negative%')
+        )
+    ) consistency on true
     where jp.judge_id = target_account_id
     order by d.debate_date desc, d.debate_time desc nulls last;
   elsif normalized_type = 'coach' then
@@ -1135,7 +1163,9 @@ begin
       tr.debate_type,
       coalesce(d.room, tr.room),
       d.topic,
-      coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number))
+      coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number)),
+      null::numeric,
+      null::text
     from C_Participation cp
     join Debate d on d.debate_id = cp.debate_id
     left join Tournament t on t.tournament_id = d.tournament_id
@@ -1252,6 +1282,7 @@ begin
       student_id,
       team_number,
       debate_stance,
+      worldview,
       speaking_order,
       is_captain
     ) values (
@@ -1263,12 +1294,18 @@ begin
           then initcap(lower(student_item ->> 'debate_stance'))
         else 'Affirmative'
       end,
+      case
+        when lower(coalesce(student_item ->> 'worldview', '')) in ('conservative', 'liberal', 'moderate')
+          then initcap(lower(student_item ->> 'worldview'))
+        else 'Moderate'
+      end,
       nullif(student_item ->> 'speaking_order', '')::int,
       coalesce((student_item ->> 'is_captain')::boolean, false)
     )
     on conflict (debate_id, student_id) do update
     set team_number = excluded.team_number,
         debate_stance = excluded.debate_stance,
+        worldview = excluded.worldview,
         speaking_order = excluded.speaking_order,
         is_captain = excluded.is_captain,
         updated_at = now();
@@ -1330,6 +1367,10 @@ returns table (
   affirmative_wins int,
   negative_wins int,
   affirmative_pct numeric,
+  negative_pct numeric,
+  consistency_avg numeric,
+  consistency_sd numeric,
+  consistency_label text,
   lean_label text
 )
 language plpgsql
@@ -1359,7 +1400,9 @@ begin
   end if;
 
   with last_30 as (
-    select jp.ruling
+    select jp.debate_id,
+           jp.ruling,
+           lower(trim(jp.ruling)) as ruling_text
     from J_Participation jp
     join Debate d on d.debate_id = jp.debate_id
     where jp.judge_id = target_judge_id
@@ -1371,24 +1414,68 @@ begin
   )
   select
     count(*)::int,
-    count(*) filter (where lower(ruling) like '%affirmative%')::int,
-    count(*) filter (where lower(ruling) like '%negative%')::int
+    count(*) filter (where ruling_text like '%affirmative%')::int,
+    count(*) filter (where ruling_text like '%negative%')::int
   into total, aff_count, neg_count
   from last_30;
 
   if total = 0 then
-    return query select 0::int, 0::int, 0::int, 50.0::numeric, 'No rulings on record'::text;
+    return query select 0::int, 0::int, 0::int, 50.0::numeric, 50.0::numeric, 0.0::numeric, 0.0::numeric, 'No consistency data'::text, 'No rulings on record'::text;
     return;
   end if;
 
   aff_pct := round((aff_count::numeric / total::numeric) * 100, 1);
 
   return query
+  with last_30 as (
+    select jp.debate_id,
+           jp.ruling,
+           lower(trim(jp.ruling)) as ruling_text
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = target_judge_id
+      and jp.ruling is not null
+      and trim(jp.ruling) <> ''
+      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+    order by d.debate_date desc nulls last, d.debate_time desc nulls last
+    limit 30
+  ),
+  worldview_stats as (
+    select
+      avg(worldview_score)::numeric as worldview_avg,
+      stddev_pop(worldview_score)::numeric as worldview_sd,
+      count(*) as world_count
+    from (
+      select l.debate_id,
+             avg(case lower(sp.worldview)
+                   when 'conservative' then -1
+                   when 'liberal' then 1
+                   else 0
+                 end)::numeric as worldview_score
+      from last_30 l
+      join S_Participation sp on sp.debate_id = l.debate_id
+      where (
+        lower(sp.debate_stance) = 'affirmative' and l.ruling_text like '%affirmative%'
+      ) or (
+        lower(sp.debate_stance) = 'negative' and l.ruling_text like '%negative%'
+      )
+      group by l.debate_id
+    ) derived
+  )
   select
     total,
     aff_count,
     neg_count,
     aff_pct,
+    round(100 - aff_pct, 1)::numeric,
+    coalesce(round(ws.consistency_avg, 3), 0.0),
+    coalesce(round(ws.consistency_sd, 3), 0.0),
+    case
+      when ws.world_count = 0 then 'No consistency data'
+      when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.25 then 'High consistency'
+      when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.6 then 'Moderate consistency'
+      else 'Mixed consistency'
+    end,
     case
       when aff_pct >= 80 then 'Strong affirmative lean'
       when aff_pct >= 65 then 'Moderate affirmative lean'
@@ -1397,7 +1484,8 @@ begin
       when aff_pct <= 35 then 'Moderate negative lean'
       when aff_pct <= 45 then 'Slight negative lean'
       else 'Neutral / Balanced'
-    end;
+    end
+  from worldview_stats ws;
 end;
 $$;
 

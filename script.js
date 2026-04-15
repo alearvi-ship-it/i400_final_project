@@ -758,6 +758,7 @@ function createHistoryCard(record) {
                 <h4 class="debate-title">${escapeHtml(record.topic || record.tournament_name || "Debate Round")}</h4>
                 <p class="debate-meta">${escapeHtml(`${when} • ${record.debate_type || "Debate"} • ${record.round_name || "Round"}`)}</p>
                 <p class="debate-meta">${escapeHtml(record.role_context || "No extra context available.")}</p>
+                ${record.ruling_consistency_label ? `<p class="debate-meta"><strong>Consistency:</strong> ${escapeHtml(record.ruling_consistency_label)}${record.ruling_consistency_score != null ? ` (${Number(record.ruling_consistency_score).toFixed(3)})` : ''}</p>` : ''}
             </div>
         </div>
         <div class="past-card-right">
@@ -1747,7 +1748,7 @@ async function handleUserHistoryPage() {
 }
 
 function renderJudgeBiasPanel(panelEl, stats) {
-    const { decided_count, affirmative_wins, negative_wins, affirmative_pct, lean_label } = stats;
+    const { decided_count, affirmative_wins, negative_wins, affirmative_pct, consistency_avg, consistency_sd, consistency_label, lean_label } = stats;
     const negPct = decided_count > 0
         ? (100 - Number(affirmative_pct)).toFixed(1)
         : "0.0";
@@ -1764,6 +1765,9 @@ function renderJudgeBiasPanel(panelEl, stats) {
     set("[data-bias-neg-count]", negative_wins);
     set("[data-bias-aff-pct]", `${affirmative_pct}%`);
     set("[data-bias-neg-pct]", `${negPct}%`);
+    set("[data-bias-consistency-avg]", Number(consistency_avg || 0).toFixed(2));
+    set("[data-bias-consistency-sd]", Number(consistency_sd || 0).toFixed(2));
+    set("[data-bias-consistency-label]", consistency_label || "–");
     set("[data-bias-label]", lean_label);
 
     const affBar = panelEl.querySelector("[data-bias-bar-aff]");
@@ -2545,9 +2549,113 @@ async function handlePolicySetupPage() {
         });
     }
 
+    function assignWorldviewGroup(row) {
+        const groupName = `student-worldview-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        row.querySelectorAll("[data-worldview]").forEach((input) => {
+            input.name = groupName;
+        });
+    }
+
     function attachRemoveHandler(row) {
         row.querySelector("[data-remove-row]")?.addEventListener("click", () => {
             row.remove();
+            updateJudgeBalanceWarning();
+        });
+    }
+
+    function classifyJudgeLean(score) {
+        if (score == null) {
+            return "moderate";
+        }
+        if (score > 0.15) {
+            return "liberal";
+        }
+        if (score < -0.15) {
+            return "conservative";
+        }
+        return "moderate";
+    }
+
+    function formatJudgeConsistency(stats) {
+        if (!stats || stats.decided_count === 0) {
+            return "No consistency data";
+        }
+        const avg = Number(stats.consistency_avg || 0).toFixed(2);
+        return `${stats.consistency_label || "Moderate consistency"} (${avg})`;
+    }
+
+    async function refreshJudgeRowConsistency(row) {
+        const judgeId = row.querySelector("[data-judge-id]")?.value;
+        const consistencyEl = row.querySelector("[data-judge-consistency]");
+        if (!judgeId || !consistencyEl || !supabaseClient) {
+            if (consistencyEl) {
+                consistencyEl.textContent = "Not selected";
+            }
+            return;
+        }
+
+        consistencyEl.textContent = "Loading...";
+        const response = await supabaseClient.rpc("get_judge_bias_stats", {
+            target_judge_id: judgeId
+        });
+
+        if (response.error || !response.data?.length) {
+            consistencyEl.textContent = "Consistency unavailable";
+            consistencyEl.dataset.consistencyScore = "";
+            updateJudgeBalanceWarning();
+            return;
+        }
+
+        const judgeStats = response.data[0];
+        consistencyEl.textContent = formatJudgeConsistency(judgeStats);
+        consistencyEl.dataset.consistencyScore = String(judgeStats.consistency_avg ?? "");
+        updateJudgeBalanceWarning();
+    }
+
+    function updateJudgeBalanceWarning() {
+        const warningEl = document.querySelector("[data-judge-balance-warning]");
+        if (!warningEl) {
+            return;
+        }
+
+        const judgeRows = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"));
+        const leanCounts = { conservative: 0, liberal: 0, moderate: 0 };
+
+        judgeRows.forEach((row) => {
+            const score = Number(row.querySelector("[data-judge-consistency]")?.dataset.consistencyScore || "NaN");
+            const label = row.querySelector("[data-judge-consistency]")?.textContent || "";
+            let lean = "moderate";
+
+            if (!Number.isNaN(score)) {
+                lean = classifyJudgeLean(score);
+            } else if (/liberal/i.test(label)) {
+                lean = "liberal";
+            } else if (/conservative/i.test(label)) {
+                lean = "conservative";
+            }
+
+            if (lean in leanCounts) {
+                leanCounts[lean] += 1;
+            }
+        });
+
+        if (leanCounts.conservative !== leanCounts.liberal && (leanCounts.conservative + leanCounts.liberal) > 0) {
+            warningEl.textContent = `Warning: panel balance is uneven. Conservative judges: ${leanCounts.conservative}, Liberal judges: ${leanCounts.liberal}. Moderates are less critical.`;
+            warningEl.hidden = false;
+        } else {
+            warningEl.textContent = "";
+            warningEl.hidden = true;
+        }
+    }
+
+    function attachJudgeRowHandlers(row) {
+        const judgeSelect = row.querySelector("[data-judge-id]");
+        if (!judgeSelect) {
+            return;
+        }
+
+        judgeSelect.addEventListener("change", () => {
+            refreshJudgeRowConsistency(row);
         });
     }
 
@@ -2564,6 +2672,7 @@ async function handlePolicySetupPage() {
         }));
 
         populateSelect(studentSelect, options, "Select student");
+        assignWorldviewGroup(row);
         attachRemoveHandler(row);
         studentRowsRoot.append(row);
     }
@@ -2582,6 +2691,7 @@ async function handlePolicySetupPage() {
 
         populateSelect(judgeSelect, options, "Select judge");
         attachRemoveHandler(row);
+        attachJudgeRowHandlers(row);
         judgeRowsRoot.append(row);
     }
 
@@ -2643,6 +2753,7 @@ async function handlePolicySetupPage() {
                     student_id: studentId,
                     team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
                     debate_stance: sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24),
+                    worldview: sanitizeText(row.querySelector("[data-worldview]:checked")?.value || "Moderate", 12),
                     speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
                     is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
                 };

@@ -134,6 +134,7 @@
                         </div>
                         <button class="ghost-button" type="button" data-add-judge-row>Add judge</button>
                     </div>
+                    <p class="warning-copy" data-judge-balance-warning hidden></p>
                     <div class="policy-rows" data-judge-rows></div>
                 </section>
 
@@ -173,6 +174,14 @@
                     <option value="Negative">Negative</option>
                 </select>
             </label>
+            <label class="field worldview-field">
+                <span>Consistency</span>
+                <div class="radio-options">
+                    <label><input type="radio" data-worldview name="worldview" value="Conservative"> Conservative</label>
+                    <label><input type="radio" data-worldview name="worldview" value="Moderate" checked> Moderate</label>
+                    <label><input type="radio" data-worldview name="worldview" value="Liberal"> Liberal</label>
+                </div>
+            </label>
             <label class="field">
                 <span>Speaking order</span>
                 <input type="number" min="1" data-speaking-order>
@@ -194,6 +203,10 @@
             <label class="field">
                 <span>Panel #</span>
                 <input type="number" min="1" value="1" data-panel-number>
+            </label>
+            <label class="field judge-consistency-field">
+                <span>Consistency</span>
+                <p class="small-copy" data-judge-consistency>Not selected</p>
             </label>
             <button class="ghost-button policy-remove" type="button" data-remove-row>Remove</button>
         </div>
