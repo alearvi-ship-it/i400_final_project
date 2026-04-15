@@ -167,7 +167,18 @@ alter table if exists Students add column if not exists emergency_contact text;
 alter table if exists Judges add column if not exists emergency_contact text;
 alter table if exists Coaches add column if not exists emergency_contact text;
 alter table if exists S_Participation add column if not exists worldview text not null default 'Moderate';
-alter table if exists S_Participation add constraint if not exists s_participation_worldview_check check (worldview in ('Conservative', 'Liberal', 'Moderate'));
+
+-- Add constraint only if it doesn't exist
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 's_participation_worldview_check'
+    and table_name = 's_participation'
+  ) then
+    alter table S_Participation add constraint s_participation_worldview_check check (worldview in ('Conservative', 'Liberal', 'Moderate'));
+  end if;
+end $$;
 
 create table if not exists Tournament (
   tournament_id uuid primary key default gen_random_uuid(),
@@ -499,7 +510,13 @@ insert into Students (
   ('00000000-0000-0000-0000-000000000003', null, 'Jordan', 'Lee', 'Lakewood Academy', 'jordan.lee@lakewood.edu', 2028, '555-1003', 'Pat Lee - 555-4103'),
   ('00000000-0000-0000-0000-000000000004', null, 'Casey', 'Nguyen', 'Eastview High School', 'casey.nguyen@eastview.edu', 2028, '555-1004', 'Linh Nguyen - 555-4104'),
   ('00000000-0000-0000-0000-000000000005', null, 'Riley', 'Johnson', 'Northfield High School', 'riley.johnson@northfield.edu', 2027, '555-1005', 'Dana Johnson - 555-4105'),
-  ('00000000-0000-0000-0000-000000000006', null, 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006', 'Anita Gupta - 555-4106')
+  ('00000000-0000-0000-0000-000000000006', null, 'Sam', 'Gupta', 'Lakewood Academy', 'sam.gupta@lakewood.edu', 2029, '555-1006', 'Anita Gupta - 555-4106'),
+  ('00000000-0000-0000-0000-000000000007', null, 'Morgan', 'Williams', 'Eastview High School', 'morgan.williams@eastview.edu', 2027, '555-1007', 'Sarah Williams - 555-4107'),
+  ('00000000-0000-0000-0000-000000000008', null, 'Drew', 'Thompson', 'Northfield High School', 'drew.thompson@northfield.edu', 2028, '555-1008', 'Mike Thompson - 555-4108'),
+  ('00000000-0000-0000-0000-000000000009', null, 'Avery', 'Davis', 'Lakewood Academy', 'avery.davis@lakewood.edu', 2029, '555-1009', 'Chris Davis - 555-4109'),
+  ('00000000-0000-0000-0000-000000000010', null, 'Cameron', 'Martinez', 'Eastview High School', 'cameron.martinez@eastview.edu', 2027, '555-1010', 'Rosa Martinez - 555-4110'),
+  ('00000000-0000-0000-0000-000000000011', null, 'Jamie', 'Wilson', 'Northfield High School', 'jamie.wilson@northfield.edu', 2028, '555-1011', 'Tom Wilson - 555-4111'),
+  ('00000000-0000-0000-0000-000000000012', null, 'Taylor', 'Brown', 'Lakewood Academy', 'taylor.brown@lakewood.edu', 2029, '555-1012', 'Lisa Brown - 555-4112')
 on conflict (student_id) do update
 set auth_user_id = excluded.auth_user_id,
     emergency_contact = coalesce(Students.emergency_contact, excluded.emergency_contact);
@@ -509,7 +526,11 @@ insert into Judges (
 ) values
   ('10000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000002', 'Mia', 'Rodriguez', 'Independent', 'mia.rodriguez@judges.org', 'NSDA Gold', '555-2001', 'Carlos Rodriguez - 555-4201'),
   ('10000000-0000-0000-0000-000000000002', null, 'Noah', 'Kim', 'Northfield High School', 'noah.kim@northfield.edu', 'NSDA Silver', '555-2002', 'Sun Kim - 555-4202'),
-  ('10000000-0000-0000-0000-000000000003', null, 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003', 'Mara Turner - 555-4203')
+  ('10000000-0000-0000-0000-000000000003', null, 'Olivia', 'Turner', 'Independent', 'olivia.turner@judges.org', 'NSDA Bronze', '555-2003', 'Mara Turner - 555-4203'),
+  ('10000000-0000-0000-0000-000000000004', null, 'Ethan', 'Garcia', 'Lakewood Academy', 'ethan.garcia@lakewood.edu', 'NSDA Gold', '555-2004', 'Maria Garcia - 555-4204'),
+  ('10000000-0000-0000-0000-000000000005', null, 'Sophia', 'Anderson', 'Eastview High School', 'sophia.anderson@eastview.edu', 'NSDA Silver', '555-2005', 'David Anderson - 555-4205'),
+  ('10000000-0000-0000-0000-000000000006', null, 'Liam', 'Taylor', 'Independent', 'liam.taylor@judges.org', 'NSDA Bronze', '555-2006', 'Emma Taylor - 555-4206'),
+  ('10000000-0000-0000-0000-000000000007', null, 'Isabella', 'Moore', 'Northfield High School', 'isabella.moore@northfield.edu', 'NSDA Gold', '555-2007', 'James Moore - 555-4207')
 on conflict (judge_id) do update
 set auth_user_id = excluded.auth_user_id,
     emergency_contact = coalesce(Judges.emergency_contact, excluded.emergency_contact);
@@ -519,7 +540,9 @@ insert into Coaches (
 ) values
   ('20000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000003', 'Renee', 'Davis', 'Eastview High School', 'renee.davis@eastview.edu', '555-3001', 'Marcus Davis - 555-4301', 9),
   ('20000000-0000-0000-0000-000000000002', null, 'Evan', 'Brooks', 'Lakewood Academy', 'evan.brooks@lakewood.edu', '555-3002', 'Jill Brooks - 555-4302', 6),
-  ('20000000-0000-0000-0000-000000000003', null, 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 'Raj Shah - 555-4303', 11)
+  ('20000000-0000-0000-0000-000000000003', null, 'Priya', 'Shah', 'Northfield High School', 'priya.shah@northfield.edu', '555-3003', 'Raj Shah - 555-4303', 11),
+  ('20000000-0000-0000-0000-000000000004', null, 'Marcus', 'Johnson', 'Eastview High School', 'marcus.johnson@eastview.edu', '555-3004', 'Lisa Johnson - 555-4304', 15),
+  ('20000000-0000-0000-0000-000000000005', null, 'Sarah', 'Williams', 'Lakewood Academy', 'sarah.williams@lakewood.edu', '555-3005', 'John Williams - 555-4305', 8)
 on conflict (coach_id) do update
 set auth_user_id = excluded.auth_user_id,
     emergency_contact = coalesce(Coaches.emergency_contact, excluded.emergency_contact);
@@ -528,7 +551,10 @@ insert into Tournament (
   tournament_id, name, host_school, location, start_date, end_date, status, created_by_admin_id
 ) values
   ('40000000-0000-0000-0000-000000000001', 'Spring Invitational 2026', 'Eastview High School', 'St. Paul, MN', '2026-04-12', '2026-04-13', 'scheduled', '30000000-0000-0000-0000-000000000001'),
-  ('40000000-0000-0000-0000-000000000002', 'Metro Classic 2026', 'Lakewood Academy', 'Minneapolis, MN', '2026-05-03', '2026-05-04', 'scheduled', '30000000-0000-0000-0000-000000000002')
+  ('40000000-0000-0000-0000-000000000002', 'Metro Classic 2026', 'Lakewood Academy', 'Minneapolis, MN', '2026-05-03', '2026-05-04', 'scheduled', '30000000-0000-0000-0000-000000000002'),
+  ('40000000-0000-0000-0000-000000000003', 'State Championship 2026', 'Northfield High School', 'Northfield, MN', '2026-05-17', '2026-05-18', 'scheduled', '30000000-0000-0000-0000-000000000001'),
+  ('40000000-0000-0000-0000-000000000004', 'Regional Qualifier 2026', 'Eastview High School', 'St. Paul, MN', '2026-03-15', '2026-03-15', 'completed', '30000000-0000-0000-0000-000000000002'),
+  ('40000000-0000-0000-0000-000000000005', 'Winter Tournament 2026', 'Lakewood Academy', 'Minneapolis, MN', '2026-02-08', '2026-02-09', 'completed', '30000000-0000-0000-0000-000000000001')
 on conflict (tournament_id) do nothing;
 
 insert into Tournament_Round (
@@ -543,7 +569,19 @@ insert into Tournament_Round (
   ('50000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000002', 'Public Forum', 2, 'Prelim 2', '2026-05-03 12:00:00+00', 'B204'),
   ('50000000-0000-0000-0000-000000000008', '40000000-0000-0000-0000-000000000002', 'Public Forum', 3, 'Prelim 3', '2026-05-03 14:30:00+00', 'B206'),
   ('50000000-0000-0000-0000-000000000009', '40000000-0000-0000-0000-000000000002', 'Policy', 1, 'Policy Prelim 1', '2026-05-03 10:00:00+00', 'P301'),
-  ('50000000-0000-0000-0000-00000000000a', '40000000-0000-0000-0000-000000000002', 'Policy', 2, 'Policy Prelim 2', '2026-05-03 13:00:00+00', 'P302')
+  ('50000000-0000-0000-0000-00000000000a', '40000000-0000-0000-0000-000000000002', 'Policy', 2, 'Policy Prelim 2', '2026-05-03 13:00:00+00', 'P302'),
+  ('50000000-0000-0000-0000-00000000000b', '40000000-0000-0000-0000-000000000003', 'Public Forum', 1, 'Quarterfinals', '2026-05-17 09:00:00+00', 'C101'),
+  ('50000000-0000-0000-0000-00000000000c', '40000000-0000-0000-0000-000000000003', 'Public Forum', 2, 'Semifinals', '2026-05-17 14:00:00+00', 'C201'),
+  ('50000000-0000-0000-0000-00000000000d', '40000000-0000-0000-0000-000000000003', 'Public Forum', 3, 'Finals', '2026-05-18 10:00:00+00', 'Auditorium'),
+  ('50000000-0000-0000-0000-00000000000e', '40000000-0000-0000-0000-000000000003', 'Policy', 1, 'Policy Quarterfinals', '2026-05-17 10:30:00+00', 'P401'),
+  ('50000000-0000-0000-0000-00000000000f', '40000000-0000-0000-0000-000000000003', 'Policy', 2, 'Policy Semifinals', '2026-05-17 15:30:00+00', 'P501'),
+  ('50000000-0000-0000-0000-000000000010', '40000000-0000-0000-0000-000000000003', 'Policy', 3, 'Policy Finals', '2026-05-18 13:00:00+00', 'Auditorium'),
+  ('50000000-0000-0000-0000-000000000011', '40000000-0000-0000-0000-000000000004', 'Public Forum', 1, 'Prelim 1', '2026-03-15 09:00:00+00', 'D101'),
+  ('50000000-0000-0000-0000-000000000012', '40000000-0000-0000-0000-000000000004', 'Public Forum', 2, 'Prelim 2', '2026-03-15 11:00:00+00', 'D102'),
+  ('50000000-0000-0000-0000-000000000013', '40000000-0000-0000-0000-000000000005', 'Public Forum', 1, 'Prelim 1', '2026-02-08 09:30:00+00', 'E101'),
+  ('50000000-0000-0000-0000-000000000014', '40000000-0000-0000-0000-000000000005', 'Public Forum', 2, 'Prelim 2', '2026-02-08 12:00:00+00', 'E102'),
+  ('50000000-0000-0000-0000-000000000015', '40000000-0000-0000-0000-000000000005', 'Policy', 1, 'Policy Prelim 1', '2026-02-08 10:00:00+00', 'P601'),
+  ('50000000-0000-0000-0000-000000000016', '40000000-0000-0000-0000-000000000005', 'Policy', 2, 'Policy Prelim 2', '2026-02-08 13:30:00+00', 'P602')
 on conflict (tournament_round_id) do nothing;
 
 insert into Debate (
@@ -552,7 +590,14 @@ insert into Debate (
   ('60000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '2026-04-12', '09:00:00', 'Resolved: Public schools should adopt AI tutoring systems.', 'A101', 'completed', 'Eastview A', 'Lakewood A'),
   ('60000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '2026-04-12', '11:00:00', 'Resolved: Urban public transit should be fare-free.', 'A103', 'scheduled', 'Eastview A', 'Northfield A'),
   ('60000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003', '2026-05-03', '09:30:00', 'Resolved: Social media platforms should be held liable for misinformation.', 'B201', 'completed', 'Eastview B', 'Northfield A'),
-  ('60000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000004', '2026-05-03', '12:00:00', 'Resolved: College should be tuition-free at public universities.', 'B204', 'scheduled', 'Lakewood B', 'Eastview A')
+  ('60000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000004', '2026-05-03', '12:00:00', 'Resolved: College should be tuition-free at public universities.', 'B204', 'scheduled', 'Lakewood B', 'Eastview A'),
+  ('60000000-0000-0000-0000-000000000005', '40000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-00000000000b', '2026-05-17', '09:00:00', 'Resolved: The United States should implement a universal basic income.', 'C101', 'completed', 'Eastview A', 'Lakewood A'),
+  ('60000000-0000-0000-0000-000000000006', '40000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-00000000000c', '2026-05-17', '14:00:00', 'Resolved: Space exploration should be a global priority.', 'C201', 'scheduled', 'Northfield A', 'Eastview B'),
+  ('60000000-0000-0000-0000-000000000007', '40000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-00000000000d', '2026-05-18', '10:00:00', 'Resolved: Artificial intelligence should be regulated internationally.', 'Auditorium', 'scheduled', 'Lakewood A', 'Eastview A'),
+  ('60000000-0000-0000-0000-000000000008', '40000000-0000-0000-0000-000000000004', '50000000-0000-0000-0000-000000000011', '2026-03-15', '09:00:00', 'Resolved: Renewable energy should replace fossil fuels by 2035.', 'D101', 'completed', 'Eastview A', 'Northfield A'),
+  ('60000000-0000-0000-0000-000000000009', '40000000-0000-0000-0000-000000000004', '50000000-0000-0000-0000-000000000012', '2026-03-15', '11:00:00', 'Resolved: Social media should have age restrictions.', 'D102', 'completed', 'Lakewood A', 'Eastview B'),
+  ('60000000-0000-0000-0000-000000000010', '40000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000013', '2026-02-08', '09:30:00', 'Resolved: The minimum wage should be $15 per hour.', 'E101', 'completed', 'Northfield A', 'Lakewood A'),
+  ('60000000-0000-0000-0000-000000000011', '40000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000014', '2026-02-08', '12:00:00', 'Resolved: Online privacy should be a fundamental right.', 'E102', 'completed', 'Eastview A', 'Northfield B')
 on conflict (debate_id) do nothing;
 
 insert into S_Participation (
@@ -565,7 +610,35 @@ insert into S_Participation (
   ('70000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000004', 1, 'Affirmative', 1, true),
   ('70000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000005', 2, 'Negative', 1, true),
   ('70000000-0000-0000-0000-000000000007', '60000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000006', 1, 'Affirmative', 1, true),
-  ('70000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 2, 'Negative', 2, false)
+  ('70000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000007', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000008', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000009', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000010', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000011', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000012', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000015', '60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000001', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000016', '60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000004', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000017', '60000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000003', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000018', '60000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000005', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000019', '60000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000006', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000020', '60000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000009', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000021', '60000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000007', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000022', '60000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000010', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000023', '60000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000008', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000024', '60000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000011', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000025', '60000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000009', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000026', '60000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000012', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000027', '60000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000004', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000028', '60000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000005', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000029', '60000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000008', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000030', '60000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000011', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000031', '60000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000009', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000032', '60000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000012', 2, 'Negative', 2, false),
+  ('70000000-0000-0000-0000-000000000033', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000010', 1, 'Affirmative', 1, true),
+  ('70000000-0000-0000-0000-000000000034', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000007', 1, 'Affirmative', 2, false),
+  ('70000000-0000-0000-0000-000000000035', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000003', 2, 'Negative', 1, true),
+  ('70000000-0000-0000-0000-000000000036', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000006', 2, 'Negative', 2, false)
 on conflict (s_participation_id) do nothing;
 
 insert into J_Participation (
@@ -575,7 +648,23 @@ insert into J_Participation (
   ('80000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.75, 'Good evidence comparison; improve crossfire pacing.'),
   ('80000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 1, null, null, null),
   ('80000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', 2, 'Team 2 (Negative) wins', 28.25, 'Negative rebuttal turned on impact calculus.'),
-  ('80000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 1, null, null, null)
+  ('80000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 1, null, null, null),
+  -- Single judge panels
+  ('80000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000004', 1, 'Team 1 (Affirmative) wins', 29.00, 'Excellent case development and rebuttal strategy.'),
+  ('80000000-0000-0000-0000-000000000007', '60000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000005', 1, 'Team 2 (Negative) wins', 27.50, 'Strong negative position with solid evidence.'),
+  ('80000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000006', 1, 'Team 1 (Affirmative) wins', 28.75, 'Clear argumentation and effective cross-examination.'),
+  -- Three-judge panels
+  ('80000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.25, 'Outstanding constructive speeches.'),
+  ('80000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.50, 'Good flow and evidence quality.'),
+  ('80000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000003', 1, 'Team 1 (Affirmative) wins', 29.00, 'Solid rebuttal work from both sides.'),
+  ('80000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000004', 2, 'Team 2 (Negative) wins', 28.75, 'Negative successfully defended their position.'),
+  ('80000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000005', 2, 'Team 2 (Negative) wins', 27.25, 'Impact calculus favored the negative.'),
+  ('80000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000006', 2, 'Team 2 (Negative) wins', 28.00, 'Good strategic positioning.'),
+  -- Two-judge panels
+  ('80000000-0000-0000-0000-000000000015', '60000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000007', 1, 'Team 1 (Affirmative) wins', 28.50, 'Affirmative maintained control throughout.'),
+  ('80000000-0000-0000-0000-000000000016', '60000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.25, 'Excellent evidence presentation.'),
+  ('80000000-0000-0000-0000-000000000017', '60000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000002', 1, 'Team 2 (Negative) wins', 27.75, 'Negative turned the round effectively.'),
+  ('80000000-0000-0000-0000-000000000018', '60000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000003', 1, 'Team 2 (Negative) wins', 28.50, 'Strong final rebuttal.')
 on conflict (j_participation_id) do nothing;
 
 insert into C_Participation (
@@ -586,7 +675,21 @@ insert into C_Participation (
   ('90000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 1, 'Prep transport and evidence packets before round start.'),
   ('90000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000001', 1, 'Emphasize frontlines in second summary.'),
   ('90000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', 2, 'Rebuild link chain with clearer warrants.'),
-  ('90000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000002', 1, 'Prepare extra evidence blocks on cost burden.')
+  ('90000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000002', 1, 'Prepare extra evidence blocks on cost burden.'),
+  ('90000000-0000-0000-0000-000000000007', '60000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001', 1, 'Work on impact comparison in rebuttals.'),
+  ('90000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000002', 2, 'Focus on weighing mechanism clarity.'),
+  ('90000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000003', 1, 'Practice quick responses to common arguments.'),
+  ('90000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000004', 2, 'Strengthen evidence quality and citation.'),
+  ('90000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000007', '20000000-0000-0000-0000-000000000001', 1, 'Develop stronger case structure.'),
+  ('90000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000007', '20000000-0000-0000-0000-000000000005', 2, 'Improve rebuttal timing and delivery.'),
+  ('90000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000004', 1, 'Focus on evidence analysis depth.'),
+  ('90000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000003', 2, 'Work on argument extension techniques.'),
+  ('90000000-0000-0000-0000-000000000015', '60000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000002', 1, 'Practice cross-examination responses.'),
+  ('90000000-0000-0000-0000-000000000016', '60000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000005', 2, 'Strengthen summary speech organization.'),
+  ('90000000-0000-0000-0000-000000000017', '60000000-0000-0000-0000-000000000010', '20000000-0000-0000-0000-000000000003', 1, 'Develop better time management skills.'),
+  ('90000000-0000-0000-0000-000000000018', '60000000-0000-0000-0000-000000000010', '20000000-0000-0000-0000-000000000004', 2, 'Focus on impact weighing clarity.'),
+  ('90000000-0000-0000-0000-000000000019', '60000000-0000-0000-0000-000000000011', '20000000-0000-0000-0000-000000000001', 1, 'Improve evidence presentation.'),
+  ('90000000-0000-0000-0000-000000000020', '60000000-0000-0000-0000-000000000011', '20000000-0000-0000-0000-000000000002', 2, 'Work on rebuttal strategy.')
 on conflict (c_participation_id) do nothing;
 
 insert into Images (
@@ -1032,6 +1135,9 @@ begin
 end;
 $$;
 
+drop function if exists public.get_user_debate_history(text, uuid);
+drop function if exists public.get_judge_bias_stats(uuid);
+
 create or replace function public.get_user_debate_history(target_account_type text, target_account_id uuid)
 returns table (
   debate_id uuid,
@@ -1461,6 +1567,39 @@ begin
       )
       group by l.debate_id
     ) derived
+  ),
+  -- Calculate dynamic thresholds based on all judges' recent performance
+  judge_population_stats as (
+    select
+      percentile_cont(0.33) within group (order by judge_consistency_sd) as consistency_sd_p33,
+      percentile_cont(0.67) within group (order by judge_consistency_sd) as consistency_sd_p67,
+      percentile_cont(0.2) within group (order by judge_aff_pct) as aff_pct_p20,
+      percentile_cont(0.35) within group (order by judge_aff_pct) as aff_pct_p35,
+      percentile_cont(0.45) within group (order by judge_aff_pct) as aff_pct_p45,
+      percentile_cont(0.55) within group (order by judge_aff_pct) as aff_pct_p55,
+      percentile_cont(0.65) within group (order by judge_aff_pct) as aff_pct_p65,
+      percentile_cont(0.8) within group (order by judge_aff_pct) as aff_pct_p80
+    from (
+      select
+        j.judge_id,
+        coalesce(stddev_pop(case lower(sp.worldview)
+                             when 'conservative' then -1
+                             when 'liberal' then 1
+                             else 0
+                           end), 0) as judge_consistency_sd,
+        (count(*) filter (where lower(jp.ruling) like '%affirmative%')::numeric /
+         nullif(count(*), 0)::numeric) * 100 as judge_aff_pct
+      from Judges j
+      left join J_Participation jp on jp.judge_id = j.judge_id
+      left join Debate d on d.debate_id = jp.debate_id
+      left join S_Participation sp on sp.debate_id = jp.debate_id
+      where jp.ruling is not null
+        and trim(jp.ruling) <> ''
+        and lower(trim(jp.ruling)) <> 'no ruling submitted'
+        and d.debate_date >= (current_date - interval '6 months')  -- Last 6 months of data
+      group by j.judge_id
+      having count(*) >= 5  -- Judges with at least 5 rulings
+    ) judge_stats
   )
   select
     total,
@@ -1472,20 +1611,21 @@ begin
     coalesce(round(ws.consistency_sd, 3), 0.0),
     case
       when ws.world_count = 0 then 'No consistency data'
-      when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.25 then 'High consistency'
-      when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.6 then 'Moderate consistency'
+      when coalesce(round(ws.consistency_sd, 3), 0.0) <= coalesce(pop.consistency_sd_p33, 0.25) then 'High consistency'
+      when coalesce(round(ws.consistency_sd, 3), 0.0) <= coalesce(pop.consistency_sd_p67, 0.6) then 'Moderate consistency'
       else 'Mixed consistency'
     end,
     case
-      when aff_pct >= 80 then 'Strong affirmative lean'
-      when aff_pct >= 65 then 'Moderate affirmative lean'
-      when aff_pct >= 55 then 'Slight affirmative lean'
-      when aff_pct <= 20 then 'Strong negative lean'
-      when aff_pct <= 35 then 'Moderate negative lean'
-      when aff_pct <= 45 then 'Slight negative lean'
+      when aff_pct >= coalesce(pop.aff_pct_p80, 80) then 'Strong affirmative lean'
+      when aff_pct >= coalesce(pop.aff_pct_p65, 65) then 'Moderate affirmative lean'
+      when aff_pct >= coalesce(pop.aff_pct_p55, 55) then 'Slight affirmative lean'
+      when aff_pct <= coalesce(pop.aff_pct_p20, 20) then 'Strong negative lean'
+      when aff_pct <= coalesce(pop.aff_pct_p35, 35) then 'Moderate negative lean'
+      when aff_pct <= coalesce(pop.aff_pct_p45, 45) then 'Slight negative lean'
       else 'Neutral / Balanced'
     end
-  from worldview_stats ws;
+  from worldview_stats ws
+  cross join judge_population_stats pop;
 end;
 $$;
 
