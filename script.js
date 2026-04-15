@@ -1740,6 +1740,7 @@ async function handleUserHistoryPage() {
         if (judgeStats) {
             renderJudgeBiasPanel(biasPanelEl, judgeStats);
         } else {
+            renderJudgeBiasPanel(biasPanelEl, null);
             const labelEl = biasPanelEl.querySelector("[data-bias-label]");
             if (labelEl) {
                 labelEl.textContent = "Bias data is currently unavailable.";
@@ -1749,7 +1750,16 @@ async function handleUserHistoryPage() {
 }
 
 function renderJudgeBiasPanel(panelEl, stats) {
-    const { decided_count, affirmative_wins, negative_wins, affirmative_pct, consistency_avg, consistency_sd, consistency_label, lean_label } = stats;
+    const {
+        decided_count = 0,
+        affirmative_wins = 0,
+        negative_wins = 0,
+        affirmative_pct = 0,
+        consistency_avg = 0,
+        consistency_sd = 0,
+        consistency_label = "Data unavailable",
+        lean_label = "Bias data unavailable"
+    } = stats || {};
     const negPct = decided_count > 0
         ? (100 - Number(affirmative_pct)).toFixed(1)
         : "0.0";
@@ -1770,6 +1780,9 @@ function renderJudgeBiasPanel(panelEl, stats) {
     set("[data-bias-consistency-sd]", Number(consistency_sd || 0).toFixed(2));
     set("[data-bias-consistency-label]", consistency_label || "–");
     set("[data-bias-label]", lean_label);
+    set("[data-bias-note]", decided_count > 0
+        ? `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`
+        : "Judge ruling data is currently unavailable.");
 
     const affBar = panelEl.querySelector("[data-bias-bar-aff]");
     const negBar = panelEl.querySelector("[data-bias-bar-neg]");
