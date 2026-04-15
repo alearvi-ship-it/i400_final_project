@@ -1731,9 +1731,22 @@ async function handleUserHistoryPage() {
 
     if (!isSelfView && isAdmin && targetType === "judge" && biasPanelEl) {
         biasPanelEl.hidden = false;
+
+        // Dynamically update panel content based on context
+        const panelTitle = biasPanelEl.querySelector(".bias-panel-title");
+        const adminBadge = biasPanelEl.querySelector(".admin-badge");
         const noteEl = biasPanelEl.querySelector("[data-bias-note]") || biasPanelEl.querySelector(".bias-window-note");
+
+        if (panelTitle) {
+            panelTitle.textContent = `${targetName}'s Judge Performance Analytics`;
+        }
+
+        if (adminBadge) {
+            adminBadge.textContent = "Administrator Review";
+        }
+
         if (noteEl) {
-            noteEl.textContent = "Loading judge consistency data…";
+            noteEl.textContent = `Loading performance analytics for ${targetName}…`;
         }
 
         const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
@@ -1741,27 +1754,27 @@ async function handleUserHistoryPage() {
         });
 
         if (biasResponse?.error) {
-            renderJudgeBiasPanel(biasPanelEl, null);
+            renderJudgeBiasPanel(biasPanelEl, null, targetName);
             if (noteEl) {
-                noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error);
+                noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
             }
         } else {
             const judgeStats = getRpcSingleRow(biasResponse);
             if (judgeStats) {
-                renderJudgeBiasPanel(biasPanelEl, judgeStats);
+                renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
             } else {
-                renderJudgeBiasPanel(biasPanelEl, null);
+                renderJudgeBiasPanel(biasPanelEl, null, targetName);
                 if (noteEl) {
-                    noteEl.textContent = "Judge consistency data is currently unavailable.";
+                    noteEl.textContent = `${targetName}'s performance data is currently unavailable.`;
                 }
             }
         }
     }
 }
 
-function getJudgeBiasErrorMessage(error) {
+function getJudgeBiasErrorMessage(error, judgeName = "judge") {
     if (!error) {
-        return "Judge consistency data is currently unavailable.";
+        return `${judgeName}'s performance data is currently unavailable.`;
     }
 
     const errorCode = error.code || '';
@@ -1769,12 +1782,12 @@ function getJudgeBiasErrorMessage(error) {
 
     // Authentication/Permission errors
     if (errorCode === '42501' || errorMessage.includes('administrator') || errorMessage.includes('permission') || errorMessage.includes('Access denied')) {
-        return "Access denied: Only administrators can view judge consistency analytics.";
+        return "Access denied: Only administrators can view judge performance analytics.";
     }
 
     // Authentication required
     if (errorMessage.includes('Authentication required')) {
-        return "Authentication required: Please log in to view judge consistency data.";
+        return "Authentication required: Please log in to view judge performance data.";
     }
 
     // Invalid/missing judge ID
@@ -1784,35 +1797,35 @@ function getJudgeBiasErrorMessage(error) {
 
     // Judge not found
     if (errorCode === '23503' || errorMessage.includes('Judge not found')) {
-        return "Judge not found: The selected judge may have been removed or the profile is invalid.";
+        return `${judgeName}'s profile could not be found. The judge may have been removed.`;
     }
 
     // Network/Connection errors
     if (errorCode === 'PGRST301' || errorMessage.includes('network') || errorMessage.includes('connection')) {
-        return "Connection error: Unable to load judge consistency data. Please check your internet connection.";
+        return "Connection error: Unable to load judge performance data. Please check your internet connection.";
     }
 
     // Database errors
     if (errorCode.startsWith('42') || errorCode.startsWith('23') || errorMessage.includes('database') || errorMessage.includes('relation')) {
-        return "Database error: Judge consistency data could not be retrieved. Please try again later.";
+        return "Database error: Judge performance data could not be retrieved. Please try again later.";
     }
 
     // Function execution errors
     if (errorCode === 'PGRST116' || errorMessage.includes('function') || errorMessage.includes('procedure')) {
-        return "Processing error: Judge consistency analytics could not be calculated. Please contact support.";
+        return "Processing error: Judge performance analytics could not be calculated. Please contact support.";
     }
 
     // Timeout errors
     if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-        return "Timeout error: Judge consistency data took too long to load. Please try refreshing the page.";
+        return "Timeout error: Judge performance data took too long to load. Please try refreshing the page.";
     }
 
     // Generic fallback with sanitized error message
     const sanitizedMessage = errorMessage.replace(/[^\w\s.,!?-]/g, '').substring(0, 100);
-    return `Error loading judge consistency data: ${sanitizedMessage || 'Unknown error occurred'}`;
+    return `Error loading ${judgeName}'s performance data: ${sanitizedMessage || 'Unknown error occurred'}`;
 }
 
-function renderJudgeBiasPanel(panelEl, stats) {
+function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     const {
         decided_count = 0,
         affirmative_wins = 0,
@@ -1831,13 +1844,13 @@ function renderJudgeBiasPanel(panelEl, stats) {
     // Determine appropriate note text based on data availability
     let noteText;
     if (!stats) {
-        noteText = "Judge consistency data is currently unavailable.";
+        noteText = `${judgeName}'s performance data is currently unavailable.`;
     } else if (!hasData) {
-        noteText = "This judge has no recorded rulings. Analytics will appear once rulings are submitted.";
+        noteText = `${judgeName} has no recorded rulings. Analytics will appear once rulings are submitted.`;
     } else if (decided_count < 5) {
-        noteText = `Limited data: Only ${decided_count} ruling(s) recorded. More comprehensive analytics available with additional rulings.`;
+        noteText = `Limited data: Only ${decided_count} ruling(s) recorded for ${judgeName}. More comprehensive analytics available with additional rulings.`;
     } else {
-        noteText = `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window.`;
+        noteText = `Score based on last 30 decided rounds — ${decided_count} ruling(s) in window for ${judgeName}.`;
     }
 
     const set = (selector, value) => {
