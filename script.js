@@ -1736,8 +1736,9 @@ async function handleUserHistoryPage() {
             target_judge_id: targetId
         });
 
-        if (!biasResponse.error && biasResponse.data?.length) {
-            renderJudgeBiasPanel(biasPanelEl, biasResponse.data[0]);
+        const judgeStats = getRpcSingleRow(biasResponse);
+        if (judgeStats) {
+            renderJudgeBiasPanel(biasPanelEl, judgeStats);
         } else {
             const labelEl = biasPanelEl.querySelector("[data-bias-label]");
             if (labelEl) {
@@ -2584,6 +2585,13 @@ async function handlePolicySetupPage() {
         return `${stats.consistency_label || "Moderate consistency"} (${avg})`;
     }
 
+    function getRpcSingleRow(response) {
+        if (!response || response.error || response.data == null) {
+            return null;
+        }
+        return Array.isArray(response.data) ? response.data[0] || null : response.data;
+    }
+
     async function refreshJudgeRowConsistency(row) {
         const judgeId = row.querySelector("[data-judge-id]")?.value;
         const consistencyEl = row.querySelector("[data-judge-consistency]");
@@ -2599,14 +2607,14 @@ async function handlePolicySetupPage() {
             target_judge_id: judgeId
         });
 
-        if (response.error || !response.data?.length) {
+        const judgeStats = getRpcSingleRow(response);
+        if (!judgeStats) {
             consistencyEl.textContent = "Consistency unavailable";
             consistencyEl.dataset.consistencyScore = "";
             updateJudgeBalanceWarning();
             return;
         }
 
-        const judgeStats = response.data[0];
         consistencyEl.textContent = formatJudgeConsistency(judgeStats);
         consistencyEl.dataset.consistencyScore = String(judgeStats.consistency_avg ?? "");
         updateJudgeBalanceWarning();
