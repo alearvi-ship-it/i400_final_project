@@ -1221,6 +1221,7 @@ textarea {
     border-radius: 99px;
     transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 4px;
+    width: var(--bias-width, 0%);
 }
 
 .affirmative-fill {

@@ -198,6 +198,22 @@ function sanitizeUuid(value) {
         : "";
 }
 
+function getRpcSingleRow(response) {
+    if (!response || response.error || response.data == null) {
+        return null;
+    }
+
+    if (Array.isArray(response.data)) {
+        return response.data[0] || null;
+    }
+
+    if (typeof response.data === "object" && response.data !== null && Array.isArray(response.data.rows)) {
+        return response.data.rows[0] || null;
+    }
+
+    return response.data;
+}
+
 function isValidEmail(value) {
     return /^[a-z0-9](?:[a-z0-9._+%-]{0,62}[a-z0-9])?@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(String(value || ""));
 }
@@ -1901,8 +1917,14 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
 
     const affBar = panelEl.querySelector("[data-bias-bar-aff]");
     const negBar = panelEl.querySelector("[data-bias-bar-neg]");
-    if (affBar) { affBar.style.width = hasData ? `${affirmative_pct}%` : "0%"; }
-    if (negBar) { negBar.style.width = hasData ? `${100 - Number(affirmative_pct)}%` : "0%"; }
+    if (affBar) { 
+        const pct = hasData ? `${affirmative_pct}%` : "0%";
+        affBar.style.setProperty('--bias-width', pct);
+    }
+    if (negBar) { 
+        const pct = hasData ? `${100 - Number(affirmative_pct)}%` : "0%";
+        negBar.style.setProperty('--bias-width', pct);
+    }
 
     const indicatorEl = panelEl.querySelector("[data-bias-indicator]");
     if (indicatorEl) {
@@ -2713,20 +2735,6 @@ async function handlePolicySetupPage() {
         return `${stats.consistency_label || "Moderate consistency"} (${avg})`;
     }
 
-    function getRpcSingleRow(response) {
-        if (!response || response.error || response.data == null) {
-            return null;
-        }
-
-        if (Array.isArray(response.data)) {
-            return response.data[0] || null;
-        }
-
-        if (typeof response.data === "object" && response.data !== null && Array.isArray(response.data.rows)) {
-            return response.data.rows[0] || null;
-        }
-
-        return response.data;
     }
 
     async function refreshJudgeRowConsistency(row) {
@@ -2866,103 +2874,102 @@ async function handlePolicySetupPage() {
         addStudentRow();
         addJudgeRow();
         addCoachRow();
-    }
 
-    refillTournamentOptions();
-    refillRoundOptions();
-    resetRows();
-    setMessage(messageEl, "Ready to schedule a policy debate.", false);
-
-    tournamentSelect?.addEventListener("change", refillRoundOptions);
-    addStudentRowBtn?.addEventListener("click", addStudentRow);
-    addJudgeRowBtn?.addEventListener("click", addJudgeRow);
-    addCoachRowBtn?.addEventListener("click", addCoachRow);
-
-    resetBtn?.addEventListener("click", () => {
-        form.reset();
-        if (debateDateInput) {
-            debateDateInput.value = new Date().toISOString().slice(0, 10);
-        }
+        refillTournamentOptions();
         refillRoundOptions();
         resetRows();
-        setMessage(messageEl, "Form reset.", false);
-    });
+        setMessage(messageEl, "Ready to schedule a policy debate.", false);
 
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
+        tournamentSelect?.addEventListener("change", refillRoundOptions);
+        addStudentRowBtn?.addEventListener("click", addStudentRow);
+        addJudgeRowBtn?.addEventListener("click", addJudgeRow);
+        addCoachRowBtn?.addEventListener("click", addCoachRow);
 
-        const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
-            .map((row) => {
-                const studentId = sanitizeUuid(row.querySelector("[data-student-id]")?.value || "");
-                return {
-                    student_id: studentId,
-                    team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
-                    debate_stance: sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24),
-                    worldview: sanitizeText(row.querySelector("[data-worldview]:checked")?.value || "Moderate", 12),
-                    speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
-                    is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
-                };
-            })
-            .filter((item) => item.student_id);
+        resetBtn?.addEventListener("click", () => {
+            form.reset();
+            if (debateDateInput) {
+                debateDateInput.value = new Date().toISOString().slice(0, 10);
+            }
+            refillRoundOptions();
+            resetRows();
+            setMessage(messageEl, "Form reset.", false);
+        });
 
-        const judgeAssignments = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"))
-            .map((row) => ({
-                judge_id: sanitizeUuid(row.querySelector("[data-judge-id]")?.value || ""),
-                panel_number: toPositiveInt(row.querySelector("[data-panel-number]")?.value || 1, 1)
-            }))
-            .filter((item) => item.judge_id);
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
 
-        const coachAssignments = Array.from(coachRowsRoot.querySelectorAll("[data-policy-row]"))
-            .map((row) => ({
-                coach_id: sanitizeUuid(row.querySelector("[data-coach-id]")?.value || ""),
-                mentored_team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
-                notes: sanitizeText(row.querySelector("[data-coach-notes]")?.value || "", 500) || null
-            }))
-            .filter((item) => item.coach_id);
+            const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => {
+                    const studentId = sanitizeUuid(row.querySelector("[data-student-id]")?.value || "");
+                    return {
+                        student_id: studentId,
+                        team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
+                        debate_stance: sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24),
+                        worldview: sanitizeText(row.querySelector("[data-worldview]:checked")?.value || "Moderate", 12),
+                        speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
+                        is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
+                    };
+                })
+                .filter((item) => item.student_id);
 
-        if (studentAssignments.length < 2) {
-            setMessage(messageEl, "Assign at least two students before creating the debate.", true);
-            return;
-        }
+            const judgeAssignments = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => ({
+                    judge_id: sanitizeUuid(row.querySelector("[data-judge-id]")?.value || ""),
+                    panel_number: toPositiveInt(row.querySelector("[data-panel-number]")?.value || 1, 1)
+                }))
+                .filter((item) => item.judge_id);
 
-        const uniqueStudentIds = new Set(studentAssignments.map((item) => item.student_id));
-        if (uniqueStudentIds.size !== studentAssignments.length) {
-            setMessage(messageEl, "Each student can only be assigned once in a debate.", true);
-            return;
-        }
+            const coachAssignments = Array.from(coachRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => ({
+                    coach_id: sanitizeUuid(row.querySelector("[data-coach-id]")?.value || ""),
+                    mentored_team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
+                    notes: sanitizeText(row.querySelector("[data-coach-notes]")?.value || "", 500) || null
+                }))
+                .filter((item) => item.coach_id);
 
-        const debateDate = sanitizeText(form.querySelector('input[name="debate_date"]')?.value || "", 32);
-        if (!debateDate) {
-            setMessage(messageEl, "Debate date is required.", true);
-            return;
-        }
+            if (studentAssignments.length < 2) {
+                setMessage(messageEl, "Assign at least two students before creating the debate.", true);
+                return;
+            }
 
-        setMessage(messageEl, "Creating policy debate setup...", false);
+            const uniqueStudentIds = new Set(studentAssignments.map((item) => item.student_id));
+            if (uniqueStudentIds.size !== studentAssignments.length) {
+                setMessage(messageEl, "Each student can only be assigned once in a debate.", true);
+                return;
+            }
 
-        const payload = {
-            p_tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
-            p_tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null,
-            p_debate_date: debateDate,
-            p_debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
-            p_topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
-            p_room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
-            p_team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
-            p_team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
-            p_student_assignments: studentAssignments,
-            p_judge_assignments: judgeAssignments,
-            p_coach_assignments: coachAssignments
-        };
+            const debateDate = sanitizeText(form.querySelector('input[name="debate_date"]')?.value || "", 32);
+            if (!debateDate) {
+                setMessage(messageEl, "Debate date is required.", true);
+                return;
+            }
 
-        const response = await supabaseClient.rpc("create_policy_debate_setup", payload);
-        if (response.error) {
-            setMessage(messageEl, response.error.message || "Could not create policy debate setup.", true);
-            return;
-        }
+            setMessage(messageEl, "Creating policy debate setup...", false);
 
-        const createdId = response.data;
-        setMessage(messageEl, `Policy debate created successfully (${createdId}).`, false);
-    });
-}
+            const payload = {
+                p_tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
+                p_tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null,
+                p_debate_date: debateDate,
+                p_debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
+                p_topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
+                p_room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
+                p_team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
+                p_team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
+                p_student_assignments: studentAssignments,
+                p_judge_assignments: judgeAssignments,
+                p_coach_assignments: coachAssignments
+            };
+
+            const response = await supabaseClient.rpc("create_policy_debate_setup", payload);
+            if (response.error) {
+                setMessage(messageEl, response.error.message || "Could not create policy debate setup.", true);
+                return;
+            }
+
+            const createdId = response.data;
+            setMessage(messageEl, `Policy debate created successfully (${createdId}).`, false);
+        });
+    }
 
 async function setupSignOut() {
     const signOut = document.querySelector("[data-signout]");
