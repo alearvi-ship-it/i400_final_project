@@ -2999,7 +2999,6 @@ async function handlePolicySetupPage() {
 
         refillTournamentOptions();
         refillRoundOptions();
-        resetRows();
         setMessage(messageEl, "Ready to schedule a policy debate.", false);
 
         tournamentSelect?.addEventListener("change", refillRoundOptions);
