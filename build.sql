@@ -317,6 +317,181 @@ create index if not exists idx_j_participation_judge_id on J_Participation(judge
 create index if not exists idx_c_participation_debate_id on C_Participation(debate_id);
 create index if not exists idx_c_participation_coach_id on C_Participation(coach_id);
 
+create table if not exists Judge_Consistency_Analytics (
+  judge_id uuid primary key references Judges(judge_id) on delete cascade,
+  decided_count int not null default 0,
+  affirmative_wins int not null default 0,
+  negative_wins int not null default 0,
+  affirmative_pct numeric(5,1) not null default 50.0,
+  consistency_avg numeric(6,3) not null default 0.0,
+  consistency_sd numeric(6,3) not null default 0.0,
+  consistency_label text not null default 'No consistency data',
+  lean_label text not null default 'No rulings on record',
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_judge_consistency_aff_pct on Judge_Consistency_Analytics(affirmative_pct);
+create index if not exists idx_judge_consistency_sd on Judge_Consistency_Analytics(consistency_sd);
+
+create or replace function public.refresh_judge_consistency_analytics(p_judge_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  rec record;
+begin
+  if p_judge_id is null then
+    return;
+  end if;
+
+  with last_30 as (
+    select jp.debate_id,
+           jp.ruling,
+           lower(trim(jp.ruling)) as ruling_text
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = p_judge_id
+      and jp.ruling is not null
+      and trim(jp.ruling) <> ''
+      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+    order by d.debate_date desc nulls last, d.debate_time desc nulls last
+    limit 30
+  ),
+  fight_counts as (
+    select
+      count(*)::int as decided_count,
+      count(*) filter (where ruling_text like '%affirmative%')::int as affirmative_wins,
+      count(*) filter (where ruling_text like '%negative%')::int as negative_wins
+    from last_30
+  ),
+  worldview_stats as (
+    select
+      avg(worldview_score)::numeric as consistency_avg,
+      stddev_pop(worldview_score)::numeric as consistency_sd,
+      count(*) as world_count
+    from (
+      select l.debate_id,
+             avg(case lower(sp.worldview)
+                   when 'conservative' then -1
+                   when 'liberal' then 1
+                   else 0
+                 end)::numeric as worldview_score
+      from last_30 l
+      join S_Participation sp on sp.debate_id = l.debate_id
+      where (
+        lower(sp.debate_stance) = 'affirmative' and l.ruling_text like '%affirmative%'
+      ) or (
+        lower(sp.debate_stance) = 'negative' and l.ruling_text like '%negative%'
+      )
+      group by l.debate_id
+    ) derived
+  ),
+  metrics as (
+    select
+      fc.decided_count,
+      fc.affirmative_wins,
+      fc.negative_wins,
+      case
+        when fc.decided_count = 0 then 50.0
+        else round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1)
+      end::numeric(5,1) as affirmative_pct,
+      coalesce(round(ws.consistency_avg, 3), 0.0)::numeric(6,3) as consistency_avg,
+      coalesce(round(ws.consistency_sd, 3), 0.0)::numeric(6,3) as consistency_sd,
+      case
+        when fc.decided_count = 0 then 'No consistency data'
+        when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.25 then 'High consistency'
+        when coalesce(round(ws.consistency_sd, 3), 0.0) <= 0.6 then 'Moderate consistency'
+        else 'Mixed consistency'
+      end as consistency_label,
+      case
+        when fc.decided_count = 0 then 'No rulings on record'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then 'Strong affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then 'Moderate affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then 'Slight affirmative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then 'Strong negative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then 'Moderate negative lean'
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then 'Slight negative lean'
+        else 'Neutral / Balanced'
+      end as lean_label
+    from fight_counts fc
+    cross join worldview_stats ws
+  )
+  select
+    m.decided_count,
+    m.affirmative_wins,
+    m.negative_wins,
+    m.affirmative_pct,
+    m.consistency_avg,
+    m.consistency_sd,
+    m.consistency_label,
+    m.lean_label
+  into rec
+  from metrics m;
+
+  insert into Judge_Consistency_Analytics (
+    judge_id,
+    decided_count,
+    affirmative_wins,
+    negative_wins,
+    affirmative_pct,
+    consistency_avg,
+    consistency_sd,
+    consistency_label,
+    lean_label,
+    updated_at
+  ) values (
+    p_judge_id,
+    rec.decided_count,
+    rec.affirmative_wins,
+    rec.negative_wins,
+    rec.affirmative_pct,
+    rec.consistency_avg,
+    rec.consistency_sd,
+    rec.consistency_label,
+    rec.lean_label,
+    now()
+  ) on conflict (judge_id) do update
+  set decided_count = excluded.decided_count,
+      affirmative_wins = excluded.affirmative_wins,
+      negative_wins = excluded.negative_wins,
+      affirmative_pct = excluded.affirmative_pct,
+      consistency_avg = excluded.consistency_avg,
+      consistency_sd = excluded.consistency_sd,
+      consistency_label = excluded.consistency_label,
+      lean_label = excluded.lean_label,
+      updated_at = excluded.updated_at;
+end;
+$$;
+
+create or replace function public.refresh_judge_consistency_analytics_trigger()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  judge_ids uuid[];
+  judge_id uuid;
+begin
+  judge_ids := array[
+    case when tg_op in ('INSERT', 'UPDATE') then new.judge_id else null end,
+    case when tg_op in ('UPDATE', 'DELETE') then old.judge_id else null end
+  ];
+
+  foreach judge_id in array(select distinct unnest(judge_ids)) loop
+    if judge_id is not null then
+      perform public.refresh_judge_consistency_analytics(judge_id);
+    end if;
+  end loop;
+
+  return coalesce(new, old);
+end;
+$$;
+
+create trigger trg_refresh_judge_consistency_analytics
+after insert or update or delete on J_Participation
+for each row execute function public.refresh_judge_consistency_analytics_trigger();
+
 create or replace function public.resolve_admin_actor()
 returns table (
   actor_admin_id uuid,
@@ -1487,10 +1662,6 @@ declare
   viewer_uid uuid := auth.uid();
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
-  aff_count int := 0;
-  neg_count int := 0;
-  total int := 0;
-  aff_pct numeric := 50;
 begin
   if viewer_uid is null then
     return;
@@ -1505,127 +1676,21 @@ begin
     raise exception 'Only administrators can view judge bias statistics.' using errcode = '42501';
   end if;
 
-  with last_30 as (
-    select jp.debate_id,
-           jp.ruling,
-           lower(trim(jp.ruling)) as ruling_text
-    from J_Participation jp
-    join Debate d on d.debate_id = jp.debate_id
-    where jp.judge_id = target_judge_id
-      and jp.ruling is not null
-      and trim(jp.ruling) <> ''
-      and lower(trim(jp.ruling)) <> 'no ruling submitted'
-    order by d.debate_date desc nulls last, d.debate_time desc nulls last
-    limit 30
-  )
-  select
-    count(*)::int,
-    count(*) filter (where ruling_text like '%affirmative%')::int,
-    count(*) filter (where ruling_text like '%negative%')::int
-  into total, aff_count, neg_count
-  from last_30;
-
-  if total = 0 then
-    return query select 0::int, 0::int, 0::int, 50.0::numeric, 50.0::numeric, 0.0::numeric, 0.0::numeric, 'No consistency data'::text, 'No rulings on record'::text;
-    return;
-  end if;
-
-  aff_pct := round((aff_count::numeric / total::numeric) * 100, 1);
+  perform public.refresh_judge_consistency_analytics(target_judge_id);
 
   return query
-  with last_30 as (
-    select jp.debate_id,
-           jp.ruling,
-           lower(trim(jp.ruling)) as ruling_text
-    from J_Participation jp
-    join Debate d on d.debate_id = jp.debate_id
-    where jp.judge_id = target_judge_id
-      and jp.ruling is not null
-      and trim(jp.ruling) <> ''
-      and lower(trim(jp.ruling)) <> 'no ruling submitted'
-    order by d.debate_date desc nulls last, d.debate_time desc nulls last
-    limit 30
-  ),
-  worldview_stats as (
-    select
-      avg(worldview_score)::numeric as worldview_avg,
-      stddev_pop(worldview_score)::numeric as worldview_sd,
-      count(*) as world_count
-    from (
-      select l.debate_id,
-             avg(case lower(sp.worldview)
-                   when 'conservative' then -1
-                   when 'liberal' then 1
-                   else 0
-                 end)::numeric as worldview_score
-      from last_30 l
-      join S_Participation sp on sp.debate_id = l.debate_id
-      where (
-        lower(sp.debate_stance) = 'affirmative' and l.ruling_text like '%affirmative%'
-      ) or (
-        lower(sp.debate_stance) = 'negative' and l.ruling_text like '%negative%'
-      )
-      group by l.debate_id
-    ) derived
-  ),
-  -- Calculate dynamic thresholds based on all judges' recent performance
-  judge_population_stats as (
-    select
-      percentile_cont(0.33) within group (order by judge_consistency_sd) as consistency_sd_p33,
-      percentile_cont(0.67) within group (order by judge_consistency_sd) as consistency_sd_p67,
-      percentile_cont(0.2) within group (order by judge_aff_pct) as aff_pct_p20,
-      percentile_cont(0.35) within group (order by judge_aff_pct) as aff_pct_p35,
-      percentile_cont(0.45) within group (order by judge_aff_pct) as aff_pct_p45,
-      percentile_cont(0.55) within group (order by judge_aff_pct) as aff_pct_p55,
-      percentile_cont(0.65) within group (order by judge_aff_pct) as aff_pct_p65,
-      percentile_cont(0.8) within group (order by judge_aff_pct) as aff_pct_p80
-    from (
-      select
-        j.judge_id,
-        coalesce(stddev_pop(case lower(sp.worldview)
-                             when 'conservative' then -1
-                             when 'liberal' then 1
-                             else 0
-                           end), 0) as judge_consistency_sd,
-        (count(*) filter (where lower(jp.ruling) like '%affirmative%')::numeric /
-         nullif(count(*), 0)::numeric) * 100 as judge_aff_pct
-      from Judges j
-      left join J_Participation jp on jp.judge_id = j.judge_id
-      left join Debate d on d.debate_id = jp.debate_id
-      left join S_Participation sp on sp.debate_id = jp.debate_id
-      where jp.ruling is not null
-        and trim(jp.ruling) <> ''
-        and lower(trim(jp.ruling)) <> 'no ruling submitted'
-        and d.debate_date >= (current_date - interval '6 months')  -- Last 6 months of data
-      group by j.judge_id
-      having count(*) >= 5  -- Judges with at least 5 rulings
-    ) judge_stats
-  )
   select
-    total,
-    aff_count,
-    neg_count,
-    aff_pct,
-    round(100 - aff_pct, 1)::numeric,
-    coalesce(round(ws.consistency_avg, 3), 0.0),
-    coalesce(round(ws.consistency_sd, 3), 0.0),
-    case
-      when ws.world_count = 0 then 'No consistency data'
-      when coalesce(round(ws.consistency_sd, 3), 0.0) <= coalesce(pop.consistency_sd_p33, 0.25) then 'High consistency'
-      when coalesce(round(ws.consistency_sd, 3), 0.0) <= coalesce(pop.consistency_sd_p67, 0.6) then 'Moderate consistency'
-      else 'Mixed consistency'
-    end,
-    case
-      when aff_pct >= coalesce(pop.aff_pct_p80, 80) then 'Strong affirmative lean'
-      when aff_pct >= coalesce(pop.aff_pct_p65, 65) then 'Moderate affirmative lean'
-      when aff_pct >= coalesce(pop.aff_pct_p55, 55) then 'Slight affirmative lean'
-      when aff_pct <= coalesce(pop.aff_pct_p20, 20) then 'Strong negative lean'
-      when aff_pct <= coalesce(pop.aff_pct_p35, 35) then 'Moderate negative lean'
-      when aff_pct <= coalesce(pop.aff_pct_p45, 45) then 'Slight negative lean'
-      else 'Neutral / Balanced'
-    end
-  from worldview_stats ws
-  cross join judge_population_stats pop;
+    decided_count,
+    affirmative_wins,
+    negative_wins,
+    affirmative_pct,
+    round(100 - affirmative_pct, 1)::numeric,
+    consistency_avg,
+    consistency_sd,
+    consistency_label,
+    lean_label
+  from Judge_Consistency_Analytics
+  where judge_id = target_judge_id;
 end;
 $$;
 
