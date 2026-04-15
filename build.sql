@@ -333,37 +333,60 @@ create table if not exists Judge_Consistency_Analytics (
 create index if not exists idx_judge_consistency_aff_pct on Judge_Consistency_Analytics(affirmative_pct);
 create index if not exists idx_judge_consistency_sd on Judge_Consistency_Analytics(consistency_sd);
 
-create or replace function public.refresh_judge_consistency_analytics(p_judge_id uuid)
+create or replace function public.refresh_judge_consistency_analytics(p_judge_id uuid, p_days_limit int default null)
 returns void
 language plpgsql
 security definer
 as $$
 declare
   rec record;
+  date_filter text := '';
 begin
   if p_judge_id is null then
     return;
   end if;
 
-  with last_30 as (
+  -- Build date filter if days_limit is provided
+  if p_days_limit is not null and p_days_limit > 0 then
+    date_filter := format(' and d.debate_date >= (current_date - interval ''%s days'')', p_days_limit);
+  end if;
+
+  execute format('
+  with filtered_rulings as (
     select jp.debate_id,
            jp.ruling,
-           lower(trim(jp.ruling)) as ruling_text
+           lower(trim(jp.ruling)) as ruling_text,
+           d.debate_date
     from J_Participation jp
     join Debate d on d.debate_id = jp.debate_id
-    where jp.judge_id = p_judge_id
+    where jp.judge_id = $1
       and jp.ruling is not null
-      and trim(jp.ruling) <> ''
-      and lower(trim(jp.ruling)) <> 'no ruling submitted'
+      and trim(jp.ruling) <> ''''
+      and lower(trim(jp.ruling)) <> ''no ruling submitted''
+      %s
     order by d.debate_date desc nulls last, d.debate_time desc nulls last
-    limit 30
   ),
   fight_counts as (
     select
       count(*)::int as decided_count,
-      count(*) filter (where ruling_text like '%affirmative%')::int as affirmative_wins,
-      count(*) filter (where ruling_text like '%negative%')::int as negative_wins
-    from last_30
+      count(*) filter (where ruling_text like ''%%affirmative%%'')::int as affirmative_wins,
+      count(*) filter (where ruling_text like ''%%negative%%'')::int as negative_wins
+    from filtered_rulings
+  ),
+  monthly_stats as (
+    select
+      date_trunc(''month'', debate_date) as month,
+      count(*) as monthly_count,
+      round(avg(case when ruling_text like ''%%affirmative%%'' then 1.0 else 0.0 end) * 100, 1) as monthly_aff_pct
+    from filtered_rulings
+    group by date_trunc(''month'', debate_date)
+    having count(*) >= 3
+  ),
+  consistency_metrics as (
+    select
+      round(avg(monthly_aff_pct), 2) as consistency_avg,
+      round(stddev(monthly_aff_pct), 2) as consistency_sd
+    from monthly_stats
   ),
   metrics as (
     select
@@ -374,23 +397,28 @@ begin
         when fc.decided_count = 0 then 50.0
         else round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1)
       end::numeric(5,1) as affirmative_pct,
-      0.0::numeric(6,3) as consistency_avg,
-      0.0::numeric(6,3) as consistency_sd,
+      coalesce(cm.consistency_avg, 0.0) as consistency_avg,
+      coalesce(cm.consistency_sd, 0.0) as consistency_sd,
       case
-        when fc.decided_count = 0 then 'No consistency data'
-        else 'Data available'
+        when fc.decided_count = 0 then ''No consistency data''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 70 then ''Liberal''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 60 then ''Moderate Liberal''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 30 then ''Conservative''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 40 then ''Moderate Conservative''
+        else ''Moderate''
       end as consistency_label,
       case
-        when fc.decided_count = 0 then 'No rulings on record'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then 'Strong affirmative lean'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then 'Moderate affirmative lean'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then 'Slight affirmative lean'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then 'Strong negative lean'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then 'Moderate negative lean'
-        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then 'Slight negative lean'
-        else 'Neutral / Balanced'
+        when fc.decided_count = 0 then ''No rulings on record''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then ''Strong affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then ''Moderate affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then ''Slight affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then ''Strong negative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then ''Moderate negative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then ''Slight negative lean''
+        else ''Neutral / Balanced''
       end as lean_label
     from fight_counts fc
+    cross join consistency_metrics cm
   )
   select
     m.decided_count,
@@ -402,7 +430,8 @@ begin
     m.consistency_label,
     m.lean_label
   into rec
-  from metrics m;
+  from metrics m', date_filter)
+  using p_judge_id;
 
   insert into Judge_Consistency_Analytics (
     judge_id,
@@ -1631,7 +1660,7 @@ $$;
 grant execute on function public.create_policy_debate_setup(uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
 -- Admins can view judge consistency analytics; judges cannot self-view these stats.
-create or replace function public.get_judge_bias_stats(target_judge_id uuid)
+create or replace function public.get_judge_bias_stats(target_judge_id uuid, days_limit int default null)
 returns table (
   decided_count int,
   affirmative_wins int,
@@ -1652,6 +1681,7 @@ declare
   viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   viewer_is_admin boolean := false;
   judge_exists boolean := false;
+  date_filter text := '';
 begin
   if viewer_uid is null and viewer_email = '' then
     raise exception 'Authentication required to view judge analytics.' using errcode = '42501';
@@ -1675,21 +1705,93 @@ begin
     raise exception 'Judge not found. The specified judge may have been removed or the ID is invalid.' using errcode = '23503';
   end if;
 
-  perform public.refresh_judge_consistency_analytics(target_judge_id);
+  -- Build date filter if days_limit is provided
+  if days_limit is not null and days_limit > 0 then
+    date_filter := format(' and d.debate_date >= (current_date - interval ''%s days'')', days_limit);
+  end if;
 
   return query
+  execute format('
+  with filtered_rulings as (
+    select jp.debate_id,
+           jp.ruling,
+           lower(trim(jp.ruling)) as ruling_text,
+           d.debate_date
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = $1
+      and jp.ruling is not null
+      and trim(jp.ruling) <> ''''
+      and lower(trim(jp.ruling)) <> ''no ruling submitted''
+      %s
+    order by d.debate_date desc nulls last, d.debate_time desc nulls last
+  ),
+  fight_counts as (
+    select
+      count(*)::int as decided_count,
+      count(*) filter (where ruling_text like ''%%affirmative%%'')::int as affirmative_wins,
+      count(*) filter (where ruling_text like ''%%negative%%'')::int as negative_wins
+    from filtered_rulings
+  ),
+  monthly_stats as (
+    select
+      date_trunc(''month'', debate_date) as month,
+      count(*) as monthly_count,
+      round(avg(case when ruling_text like ''%%affirmative%%'' then 1.0 else 0.0 end) * 100, 1) as monthly_aff_pct
+    from filtered_rulings
+    group by date_trunc(''month'', debate_date)
+    having count(*) >= 3
+  ),
+  consistency_metrics as (
+    select
+      round(avg(monthly_aff_pct), 2) as consistency_avg,
+      round(stddev(monthly_aff_pct), 2) as consistency_sd
+    from monthly_stats
+  ),
+  metrics as (
+    select
+      fc.decided_count,
+      fc.affirmative_wins,
+      fc.negative_wins,
+      case
+        when fc.decided_count = 0 then 50.0
+        else round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1)
+      end::numeric(5,1) as affirmative_pct,
+      coalesce(cm.consistency_avg, 0.0) as consistency_avg,
+      coalesce(cm.consistency_sd, 0.0) as consistency_sd,
+      case
+        when fc.decided_count = 0 then ''No consistency data''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 70 then ''Liberal''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 60 then ''Moderate Liberal''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 30 then ''Conservative''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 40 then ''Moderate Conservative''
+        else ''Moderate''
+      end as consistency_label,
+      case
+        when fc.decided_count = 0 then ''No rulings on record''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 80 then ''Strong affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 65 then ''Moderate affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) >= 55 then ''Slight affirmative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 20 then ''Strong negative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then ''Moderate negative lean''
+        when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then ''Slight negative lean''
+        else ''Neutral / Balanced''
+      end as lean_label
+    from fight_counts fc
+    cross join consistency_metrics cm
+  )
   select
-    coalesce(j.decided_count, 0) as decided_count,
-    coalesce(j.affirmative_wins, 0) as affirmative_wins,
-    coalesce(j.negative_wins, 0) as negative_wins,
-    coalesce(j.affirmative_pct, 50.0) as affirmative_pct,
-    round(100 - coalesce(j.affirmative_pct, 50.0), 1)::numeric as negative_pct,
-    coalesce(j.consistency_avg, 0.0) as consistency_avg,
-    coalesce(j.consistency_sd, 0.0) as consistency_sd,
-    coalesce(j.consistency_label, 'No consistency data') as consistency_label,
-    coalesce(j.lean_label, 'No rulings on record') as lean_label
-  from (select target_judge_id) t
-  left join Judge_Consistency_Analytics j on j.judge_id = t.target_judge_id;
+    m.decided_count,
+    m.affirmative_wins,
+    m.negative_wins,
+    m.affirmative_pct,
+    round(100 - m.affirmative_pct, 1)::numeric as negative_pct,
+    m.consistency_avg,
+    m.consistency_sd,
+    m.consistency_label,
+    m.lean_label
+  from metrics m', date_filter)
+  using target_judge_id;
 end;
 $$;
 

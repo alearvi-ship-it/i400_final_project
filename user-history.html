@@ -67,6 +67,13 @@
                     <span class="admin-badge">Administrator Review</span>
                 </header>
                 <p class="bias-window-note" data-bias-note>Loading performance data…</p>
+                
+                <div class="date-range-controls">
+                    <label for="date-range-slider">Analysis Time Range:</label>
+                    <input type="range" id="date-range-slider" min="0" max="365" value="0" step="30">
+                    <span id="date-range-label">All time</span>
+                </div>
+                
                 <div class="bias-chart">
                     <div class="bias-bar-group">
                         <div class="bias-bar-label">
@@ -95,16 +102,18 @@
                 </div>
                 <div class="bias-consistency-panel">
                     <div class="bias-consistency-stat">
-                        <span>Consistency</span>
+                        <span>Consistency:</span>
                         <strong data-bias-consistency-label>–</strong>
                     </div>
                     <div class="bias-consistency-stat">
                         <span>Average consistency score</span>
                         <strong data-bias-consistency-avg>–</strong>
+                        <span class="stat-range">(0-100)</span>
                     </div>
                     <div class="bias-consistency-stat">
                         <span>Score standard deviation</span>
                         <strong data-bias-consistency-sd>–</strong>
+                        <span class="stat-range">(0-50)</span>
                     </div>
                 </div>
             </section>

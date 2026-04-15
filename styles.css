@@ -1232,11 +1232,39 @@ textarea {
     background: #b42020;
 }
 
-.bias-pct {
-    font-size: 0.8rem;
+.date-range-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.date-range-controls label {
     font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.date-range-controls input[type="range"] {
+    flex: 1;
+    max-width: 200px;
+}
+
+.date-range-controls #date-range-label {
+    font-weight: 500;
     color: var(--text-muted);
+    min-width: 80px;
     text-align: right;
+}
+
+.stat-range {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
 }
 
 .bias-conclusion {

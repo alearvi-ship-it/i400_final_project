@@ -1745,71 +1745,107 @@ async function handleUserHistoryPage() {
         setMessage(messageEl, `Loaded ${records.length} debate history record(s).`, false);
     }
 
-    if (!isSelfView && isAdmin && targetType === "judge" && biasPanelEl) {
-        biasPanelEl.hidden = false;
+async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null) {
+    if (!biasPanelEl) {
+        biasPanelEl = document.querySelector("[data-judge-bias-panel]");
+    }
+    
+    if (!biasPanelEl) {
+        return;
+    }
 
-        // Dynamically update panel content based on context
-        const panelTitle = biasPanelEl.querySelector(".bias-panel-title");
-        const adminBadge = biasPanelEl.querySelector(".admin-badge");
-        const noteEl = biasPanelEl.querySelector("[data-bias-note]") || biasPanelEl.querySelector(".bias-window-note");
+    // Dynamically update panel content based on context
+    const panelTitle = biasPanelEl.querySelector(".bias-panel-title");
+    const adminBadge = biasPanelEl.querySelector(".admin-badge");
+    const noteEl = biasPanelEl.querySelector("[data-bias-note]") || biasPanelEl.querySelector(".bias-window-note");
 
-        if (panelTitle) {
-            panelTitle.textContent = `${targetName}'s Judge Performance Analytics`;
-        }
+    if (panelTitle) {
+        panelTitle.textContent = `${targetName}'s Judge Performance Analytics`;
+    }
 
-        if (adminBadge) {
-            adminBadge.textContent = "Administrator Review";
-        }
+    if (adminBadge) {
+        adminBadge.textContent = "Administrator Review";
+    }
 
-        if (noteEl) {
-            noteEl.textContent = `Loading performance analytics for ${targetName}…`;
-        }
+    if (noteEl) {
+        noteEl.textContent = `Loading performance analytics for ${targetName}…`;
+    }
 
-        const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
-            target_judge_id: targetId
-        });
-
-        console.log('Judge bias RPC response:', biasResponse);
-
-        if (biasResponse?.error) {
-            console.error('Judge bias RPC error:', biasResponse.error);
-            // For debugging, show sample data if it's a development environment
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                console.log('Development mode: showing sample analytics data');
-                const sampleStats = {
-                    decided_count: 5,
-                    affirmative_wins: 3,
-                    negative_wins: 2,
-                    affirmative_pct: 60.0,
-                    negative_pct: 40.0,
-                    consistency_avg: 0.0,
-                    consistency_sd: 0.0,
-                    consistency_label: 'Data available',
-                    lean_label: 'Slight affirmative lean'
-                };
-                renderJudgeBiasPanel(biasPanelEl, sampleStats, targetName);
-                if (noteEl) {
-                    noteEl.textContent = `Sample data shown for ${targetName} (RPC error: ${biasResponse.error.message}). Run populate_all_judge_analytics() in database to fix.`;
-                }
+    // Set up date range slider (only if not already set up)
+    const dateRangeSlider = document.getElementById('date-range-slider');
+    const dateRangeLabel = document.getElementById('date-range-label');
+    
+    if (dateRangeSlider && dateRangeLabel && !dateRangeSlider.hasAttribute('data-initialized')) {
+        const updateLabel = () => {
+            const value = parseInt(dateRangeSlider.value);
+            if (value === 0) {
+                dateRangeLabel.textContent = 'All time';
             } else {
-                renderJudgeBiasPanel(biasPanelEl, null, targetName);
-                if (noteEl) {
-                    noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
-                }
+                dateRangeLabel.textContent = `Last ${value} days`;
+            }
+        };
+        
+        updateLabel(); // Set initial label
+        
+        dateRangeSlider.addEventListener('input', updateLabel);
+        dateRangeSlider.addEventListener('change', () => {
+            // Reload data when slider changes
+            loadJudgeAnalytics(targetId, targetName, biasPanelEl);
+        });
+        
+        dateRangeSlider.setAttribute('data-initialized', 'true');
+    }
+
+    // Get current date range setting
+    const daysLimit = dateRangeSlider ? parseInt(dateRangeSlider.value) : null;
+    const daysParam = daysLimit && daysLimit > 0 ? daysLimit : null;
+
+    const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
+        target_judge_id: targetId,
+        days_limit: daysParam
+    });
+
+    console.log('Judge bias RPC response:', biasResponse);
+
+    if (biasResponse?.error) {
+        console.error('Judge bias RPC error:', biasResponse.error);
+        // For debugging, show sample data if it's a development environment
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            console.log('Development mode: showing sample analytics data');
+            const sampleStats = {
+                decided_count: 5,
+                affirmative_wins: 3,
+                negative_wins: 2,
+                affirmative_pct: 60.0,
+                negative_pct: 40.0,
+                consistency_avg: 65.5,
+                consistency_sd: 12.3,
+                consistency_label: 'Moderate',
+                lean_label: 'Slight affirmative lean'
+            };
+            renderJudgeBiasPanel(biasPanelEl, sampleStats, targetName);
+            if (noteEl) {
+                noteEl.textContent = `Sample data shown for ${targetName} (RPC error: ${biasResponse.error.message}). Run populate_all_judge_analytics() in database to fix.`;
             }
         } else {
-            const judgeStats = getRpcSingleRow(biasResponse);
-            console.log('Judge stats extracted:', judgeStats);
-            if (judgeStats) {
-                renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
-            } else {
-                renderJudgeBiasPanel(biasPanelEl, null, targetName);
-                if (noteEl) {
-                    noteEl.textContent = `${targetName}'s performance data is currently unavailable.`;
-                }
+            renderJudgeBiasPanel(biasPanelEl, null, targetName);
+            if (noteEl) {
+                noteEl.textContent = getJudgeBiasErrorMessage(biasResponse.error, targetName);
+            }
+        }
+    } else {
+        const judgeStats = getRpcSingleRow(biasResponse);
+        console.log('Judge stats extracted:', judgeStats);
+        if (judgeStats) {
+            renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
+        } else {
+            renderJudgeBiasPanel(biasPanelEl, null, targetName);
+            if (noteEl) {
+                noteEl.textContent = `${targetName}'s performance data is currently unavailable.`;
             }
         }
     }
+}
 }
 
 function getJudgeBiasErrorMessage(error, judgeName = "judge") {
@@ -1907,7 +1943,7 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-neg-pct]", negPctText);
     set("[data-bias-consistency-avg]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
     set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
-    set("[data-bias-consistency-label]", hasData ? (consistency_label === 'Data available' ? 'Available' : consistency_label) || "–" : "No consistency data");
+    set("[data-bias-consistency-label]", hasData ? consistency_label : "No data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
 
     const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
