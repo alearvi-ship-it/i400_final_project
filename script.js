@@ -106,7 +106,11 @@ function getSupabaseClient() {
         return null;
     }
 
-    return window.supabase.createClient(url, anonKey);
+    if (!window.__debatehubSupabaseClient) {
+        window.__debatehubSupabaseClient = window.supabase.createClient(url, anonKey);
+    }
+
+    return window.__debatehubSupabaseClient;
 }
 
 const supabaseClient = getSupabaseClient();
