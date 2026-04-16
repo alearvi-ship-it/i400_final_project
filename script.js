@@ -1749,9 +1749,15 @@ async function handleUserHistoryPage() {
         setMessage(messageEl, `Loaded ${records.length} debate history record(s).`, false);
     }
 
-    if (!isSelfView && isAdmin && targetType === "judge" && biasPanelEl) {
-        biasPanelEl.hidden = false;
-        await loadJudgeAnalytics(targetId, targetName, biasPanelEl, records);
+    // Judge consistency analytics panel: only show for judges viewed by admins
+    if (biasPanelEl) {
+        if (!isSelfView && isAdmin && targetType === "judge") {
+            biasPanelEl.hidden = false;
+            await loadJudgeAnalytics(targetId, targetName, biasPanelEl, records);
+        } else {
+            // Omit analytics for non-judge account types (student/coach) or self-views
+            biasPanelEl.hidden = true;
+        }
     }
 }
 
@@ -2000,7 +2006,10 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
         consistency_avg = 0,
         consistency_sd = 0,
         consistency_label = "Data unavailable",
-        lean_label = "Bias data unavailable"
+        lean_label = "Bias data unavailable",
+        avg_feedback_length = 0,
+        feedback_length_stddev = 0,
+        feedback_sample_count = 0
     } = stats || {};
 
     const hasData = decided_count > 0;
@@ -2035,6 +2044,9 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
     set("[data-bias-consistency-label]", hasData ? consistency_label : "No data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
+    set("[data-bias-avg-feedback-length]", feedback_sample_count > 0 ? Number(avg_feedback_length || 0).toFixed(0) : "–");
+    set("[data-bias-feedback-stddev]", feedback_sample_count > 0 ? Number(feedback_length_stddev || 0).toFixed(0) : "–");
+    set("[data-bias-feedback-count]", feedback_sample_count > 0 ? feedback_sample_count : "–");
 
     const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
     if (noteEl) {
@@ -2896,7 +2908,14 @@ async function handlePolicySetupPage() {
         }
 
         const judgeRows = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"));
+        const judgeCount = judgeRows.length;
         const leanCounts = { conservative: 0, liberal: 0, moderate: 0 };
+        const warnings = [];
+
+        // Check if judge count is odd
+        if (judgeCount > 0 && judgeCount % 2 === 0) {
+            warnings.push(`Panel size must be odd (currently ${judgeCount} judges). Add or remove a judge to avoid ties.`);
+        }
 
         judgeRows.forEach((row) => {
             const score = Number(row.querySelector("[data-judge-consistency]")?.dataset.consistencyScore || "NaN");
@@ -2916,8 +2935,12 @@ async function handlePolicySetupPage() {
             }
         });
 
-        if (leanCounts.conservative !== leanCounts.liberal && (leanCounts.conservative + leanCounts.liberal) > 0) {
-            warningEl.textContent = `Warning: panel balance is uneven. Conservative judges: ${leanCounts.conservative}, Liberal judges: ${leanCounts.liberal}. Moderates are less critical.`;
+        if (judgeCount > 0 && leanCounts.conservative !== leanCounts.liberal && (leanCounts.conservative + leanCounts.liberal) > 0) {
+            warnings.push(`Lean balance: Conservative ${leanCounts.conservative}, Liberal ${leanCounts.liberal}. Moderates can break ties.`);
+        }
+
+        if (warnings.length > 0) {
+            warningEl.textContent = warnings.join(" ");
             warningEl.hidden = false;
         } else {
             warningEl.textContent = "";
@@ -3056,7 +3079,7 @@ async function handlePolicySetupPage() {
             const judgeAssignments = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"))
                 .map((row) => ({
                     judge_id: sanitizeUuid(row.querySelector("[data-judge-id]")?.value || ""),
-                    panel_number: toPositiveInt(row.querySelector("[data-panel-number]")?.value || 1, 1)
+                    panel_number: 1
                 }))
                 .filter((item) => item.judge_id);
 
@@ -3077,6 +3100,11 @@ async function handlePolicySetupPage() {
             const uniqueStudentIds = new Set(studentAssignments.map((item) => item.student_id));
             if (uniqueStudentIds.size !== studentAssignments.length) {
                 setMessage(messageEl, "Each student can only be assigned once in a debate.", true);
+                return;
+            }
+
+            if (judgeAssignments.length > 0 && judgeAssignments.length % 2 === 0) {
+                setMessage(messageEl, `Judge panel must have an odd number of judges to avoid ties (currently ${judgeAssignments.length}). Add or remove a judge.`, true);
                 return;
             }
 

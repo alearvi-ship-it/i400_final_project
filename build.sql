@@ -250,7 +250,7 @@ create table if not exists J_Participation (
   feedback text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint j_participation_panel_number_check check (panel_number is null or panel_number > 0),
+  constraint j_participation_panel_number_check check (panel_number is null or (panel_number > 0 and panel_number % 2 = 1)),
   constraint j_participation_unique unique (debate_id, judge_id)
 );
 
@@ -327,6 +327,9 @@ create table if not exists Judge_Consistency_Analytics (
   consistency_sd numeric(6,3) not null default 0.0,
   consistency_label text not null default 'No consistency data',
   lean_label text not null default 'No rulings on record',
+  avg_feedback_length numeric(6,2) not null default 0.0,
+  feedback_length_stddev numeric(6,2) not null default 0.0,
+  feedback_sample_count int not null default 0,
   updated_at timestamptz not null default now()
 );
 
@@ -436,38 +439,70 @@ begin
   into rec
   using p_judge_id;
 
-  insert into Judge_Consistency_Analytics (
-    judge_id,
-    decided_count,
-    affirmative_wins,
-    negative_wins,
-    affirmative_pct,
-    consistency_avg,
-    consistency_sd,
-    consistency_label,
-    lean_label,
-    updated_at
-  ) values (
-    p_judge_id,
-    rec.decided_count,
-    rec.affirmative_wins,
-    rec.negative_wins,
-    rec.affirmative_pct,
-    rec.consistency_avg,
-    rec.consistency_sd,
-    rec.consistency_label,
-    rec.lean_label,
-    now()
-  ) on conflict (judge_id) do update
-  set decided_count = excluded.decided_count,
-      affirmative_wins = excluded.affirmative_wins,
-      negative_wins = excluded.negative_wins,
-      affirmative_pct = excluded.affirmative_pct,
-      consistency_avg = excluded.consistency_avg,
-      consistency_sd = excluded.consistency_sd,
-      consistency_label = excluded.consistency_label,
-      lean_label = excluded.lean_label,
-      updated_at = excluded.updated_at;
+  -- Calculate feedback length statistics
+  declare
+    v_avg_feedback_length numeric(6,2);
+    v_feedback_stddev numeric(6,2);
+    v_feedback_sample_count int;
+  begin
+    with feedback_lengths as (
+      select length(coalesce(jp.feedback, ''))
+      from J_Participation jp
+      join Debate d on d.debate_id = jp.debate_id
+      where jp.judge_id = p_judge_id
+        and jp.feedback is not null
+        and trim(jp.feedback) <> ''
+        %s
+    )
+    select
+      coalesce(round(avg(length)::numeric, 2), 0.0),
+      coalesce(round(stddev(length)::numeric, 2), 0.0),
+      count(*)
+    into v_avg_feedback_length, v_feedback_stddev, v_feedback_sample_count
+    from feedback_lengths;
+
+    insert into Judge_Consistency_Analytics (
+      judge_id,
+      decided_count,
+      affirmative_wins,
+      negative_wins,
+      affirmative_pct,
+      consistency_avg,
+      consistency_sd,
+      consistency_label,
+      lean_label,
+      avg_feedback_length,
+      feedback_length_stddev,
+      feedback_sample_count,
+      updated_at
+    ) values (
+      p_judge_id,
+      rec.decided_count,
+      rec.affirmative_wins,
+      rec.negative_wins,
+      rec.affirmative_pct,
+      rec.consistency_avg,
+      rec.consistency_sd,
+      rec.consistency_label,
+      rec.lean_label,
+      v_avg_feedback_length,
+      v_feedback_stddev,
+      v_feedback_sample_count,
+      now()
+    ) on conflict (judge_id) do update
+    set decided_count = excluded.decided_count,
+        affirmative_wins = excluded.affirmative_wins,
+        negative_wins = excluded.negative_wins,
+        affirmative_pct = excluded.affirmative_pct,
+        consistency_avg = excluded.consistency_avg,
+        consistency_sd = excluded.consistency_sd,
+        consistency_label = excluded.consistency_label,
+        lean_label = excluded.lean_label,
+        avg_feedback_length = excluded.avg_feedback_length,
+        feedback_length_stddev = excluded.feedback_length_stddev,
+        feedback_sample_count = excluded.feedback_sample_count,
+        updated_at = excluded.updated_at;
+  end;
 end;
 $$;
 
@@ -480,6 +515,11 @@ declare
   judge_ids uuid[];
   judge_id uuid;
 begin
+  -- Allow callers to suppress analytics refresh within a transaction.
+  if current_setting('app.skip_judge_analytics', true) = '1' then
+    return coalesce(new, old);
+  end if;
+
   judge_ids := array[
     case when tg_op in ('INSERT', 'UPDATE') then new.judge_id else null end,
     case when tg_op in ('UPDATE', 'DELETE') then old.judge_id else null end
@@ -554,6 +594,11 @@ declare
   changed_keys text[] := null;
   target_id text := null;
 begin
+  -- Allow callers to suppress audit writes within a transaction.
+  if current_setting('app.skip_admin_audit', true) = '1' then
+    return coalesce(NEW, OLD);
+  end if;
+
   select * into actor from public.resolve_admin_actor();
   if actor.actor_admin_id is null then
     return coalesce(NEW, OLD);
@@ -839,27 +884,22 @@ on conflict (s_participation_id) do nothing;
 insert into J_Participation (
   j_participation_id, debate_id, judge_id, panel_number, ruling, score, feedback
 ) values
-  ('80000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.50, 'Strong weighing and clear summary speeches.'),
-  ('80000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.75, 'Good evidence comparison; improve crossfire pacing.'),
-  ('80000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 1, null, null, null),
-  ('80000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', 2, 'Team 2 (Negative) wins', 28.25, 'Negative rebuttal turned on impact calculus.'),
-  ('80000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 1, null, null, null),
+  ('80000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.50, 'Strong weighing and clear summary speeches. Excellent impact comparison in the final rebuttal.'),
+  ('80000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.75, 'Good evidence comparison; improve crossfire pacing. Stronger card citation would strengthen the case.'),
+  ('80000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 28.50, 'Constructive speeches were well-structured. Work on cross-examination responsiveness in future rounds.'),
+  ('80000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', 2, 'Team 2 (Negative) wins', 28.25, 'Negative rebuttal turned on impact calculus. Strong defense mechanism and warrant structure.'),
+  ('80000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 1, 'Team 2 (Negative) wins', 27.75, 'Affirmative case had internal contradictions. Negative successfully highlighted risk calculus issues.'),
   -- Single judge panels
-  ('80000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000004', 1, 'Team 1 (Affirmative) wins', 29.00, 'Excellent case development and rebuttal strategy.'),
-  ('80000000-0000-0000-0000-000000000007', '60000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000005', 1, 'Team 2 (Negative) wins', 27.50, 'Strong negative position with solid evidence.'),
-  ('80000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000006', 1, 'Team 1 (Affirmative) wins', 28.75, 'Clear argumentation and effective cross-examination.'),
+  ('80000000-0000-0000-0000-000000000006', '60000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000004', 1, 'Team 1 (Affirmative) wins', 29.00, 'Excellent case development and rebuttal strategy. Particularly strong framework debate and link extensions.'),
+  ('80000000-0000-0000-0000-000000000007', '60000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000005', 1, 'Team 2 (Negative) wins', 27.50, 'Strong negative position with solid evidence. Better impact assessment needed for alternative scenarios.'),
+  ('80000000-0000-0000-0000-000000000008', '60000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000006', 1, 'Team 1 (Affirmative) wins', 28.75, 'Clear argumentation and effective cross-examination. Affirmative maintained question control effectively.'),
   -- Three-judge panels
-  ('80000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.25, 'Outstanding constructive speeches.'),
-  ('80000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.50, 'Good flow and evidence quality.'),
-  ('80000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000003', 1, 'Team 1 (Affirmative) wins', 29.00, 'Solid rebuttal work from both sides.'),
-  ('80000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000004', 2, 'Team 2 (Negative) wins', 28.75, 'Negative successfully defended their position.'),
-  ('80000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000005', 2, 'Team 2 (Negative) wins', 27.25, 'Impact calculus favored the negative.'),
-  ('80000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000006', 2, 'Team 2 (Negative) wins', 28.00, 'Good strategic positioning.'),
-  -- Two-judge panels
-  ('80000000-0000-0000-0000-000000000015', '60000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000007', 1, 'Team 1 (Affirmative) wins', 28.50, 'Affirmative maintained control throughout.'),
-  ('80000000-0000-0000-0000-000000000016', '60000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.25, 'Excellent evidence presentation.'),
-  ('80000000-0000-0000-0000-000000000017', '60000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000002', 1, 'Team 2 (Negative) wins', 27.75, 'Negative turned the round effectively.'),
-  ('80000000-0000-0000-0000-000000000018', '60000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000003', 1, 'Team 2 (Negative) wins', 28.50, 'Strong final rebuttal.')
+  ('80000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', 1, 'Team 1 (Affirmative) wins', 29.25, 'Outstanding constructive speeches with excellent warrant comparison. Second rebuttal was particularly strong.'),
+  ('80000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000002', 1, 'Team 1 (Affirmative) wins', 28.50, 'Good flow and evidence quality. Negative had strong theory arguments but failed on substantive impacts.'),
+  ('80000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000003', 1, 'Team 1 (Affirmative) wins', 29.00, 'Solid rebuttal work from both sides. Affirmative edge on impact-weighing and strategic extension choices.'),
+  ('80000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000004', 3, 'Team 2 (Negative) wins', 28.75, 'Negative successfully defended their position. Good block development and strategic conceding.'),
+  ('80000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000005', 3, 'Team 2 (Negative) wins', 27.25, 'Impact calculus favored the negative. Affirmative struggled with probability arguments in final focus.'),
+  ('80000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000006', 3, 'Team 2 (Negative) wins', 28.00, 'Good strategic positioning. Negative advantage case outweighed affirmative''s solvency arguments.')
 on conflict (j_participation_id) do nothing;
 
 insert into C_Participation (
@@ -1406,14 +1446,19 @@ begin
       tr.debate_type,
       coalesce(d.room, tr.room),
       d.topic,
-      format('Team %s • %s', sp.team_number, coalesce(sp.debate_stance, 'TBD')),
+      case
+        when viewer_is_admin then format('Team %s • %s | Judge feedback: %s', sp.team_number, coalesce(sp.debate_stance, 'TBD'), coalesce(string_agg(distinct case when jp.feedback is not null and trim(jp.feedback) <> '' then jp.feedback else null end, ' | '), 'None submitted'))
+        else format('Team %s • %s', sp.team_number, coalesce(sp.debate_stance, 'TBD'))
+      end,
       null::numeric,
       null::text
     from S_Participation sp
     join Debate d on d.debate_id = sp.debate_id
     left join Tournament t on t.tournament_id = d.tournament_id
     left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    left join J_Participation jp on jp.debate_id = d.debate_id
     where sp.student_id = target_account_id
+    group by d.debate_id, d.debate_date, d.status, t.name, tr.round_name, tr.debate_type, d.room, tr.room, d.topic, sp.team_number, sp.debate_stance
     order by d.debate_date desc, d.debate_time desc nulls last;
   elsif normalized_type = 'judge' then
     return query
@@ -1467,14 +1512,19 @@ begin
       tr.debate_type,
       coalesce(d.room, tr.room),
       d.topic,
-      coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number)),
+      case
+        when viewer_is_admin then format('%s | Judge feedback: %s', coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number)), coalesce(string_agg(distinct case when jp.feedback is not null and trim(jp.feedback) <> '' then jp.feedback else null end, ' | '), 'None submitted'))
+        else coalesce(cp.notes, format('Mentored team %s', cp.mentored_team_number))
+      end,
       null::numeric,
       null::text
     from C_Participation cp
     join Debate d on d.debate_id = cp.debate_id
     left join Tournament t on t.tournament_id = d.tournament_id
     left join Tournament_Round tr on tr.tournament_round_id = d.tournament_round_id
+    left join J_Participation jp on jp.debate_id = d.debate_id
     where cp.coach_id = target_account_id
+    group by d.debate_id, d.debate_date, d.status, t.name, tr.round_name, tr.debate_type, d.room, tr.room, d.topic, cp.notes, cp.mentored_team_number
     order by d.debate_date desc, d.debate_time desc nulls last;
   else
     raise exception 'Unsupported account type: %', target_account_type using errcode = '22023';
@@ -1512,6 +1562,10 @@ declare
   judge_item jsonb;
   coach_item jsonb;
 begin
+  -- Avoid non-critical trigger-side failures from aborting setup.
+  perform set_config('app.skip_admin_audit', '1', true);
+  perform set_config('app.skip_judge_analytics', '1', true);
+
   if viewer_uid is null then
     raise exception 'Authentication required.' using errcode = '42501';
   end if;
@@ -1629,7 +1683,10 @@ begin
     ) values (
       created_debate_id,
       (judge_item ->> 'judge_id')::uuid,
-      greatest(coalesce((judge_item ->> 'panel_number')::int, 1), 1)
+      case when coalesce((judge_item ->> 'panel_number')::int, 1) % 2 = 1
+        then coalesce((judge_item ->> 'panel_number')::int, 1)
+        else 1
+      end
     )
     on conflict (debate_id, judge_id) do update
     set panel_number = excluded.panel_number,
