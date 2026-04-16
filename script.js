@@ -3040,10 +3040,12 @@ async function handlePolicySetupPage() {
             const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
                 .map((row) => {
                     const studentId = sanitizeUuid(row.querySelector("[data-student-id]")?.value || "");
+                    const debateStance = sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24);
                     return {
                         student_id: studentId,
                         team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
-                        debate_stance: sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24),
+                        debate_stance: debateStance,
+                        stance: debateStance,
                         worldview: sanitizeText(row.querySelector("[data-worldview]:checked")?.value || "Moderate", 12),
                         speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
                         is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
@@ -3062,6 +3064,7 @@ async function handlePolicySetupPage() {
                 .map((row) => ({
                     coach_id: sanitizeUuid(row.querySelector("[data-coach-id]")?.value || ""),
                     mentored_team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
+                    team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
                     notes: sanitizeText(row.querySelector("[data-coach-notes]")?.value || "", 500) || null
                 }))
                 .filter((item) => item.coach_id);
@@ -3101,7 +3104,14 @@ async function handlePolicySetupPage() {
 
             const response = await supabaseClient.rpc("create_policy_debate_setup", payload);
             if (response.error) {
-                setMessage(messageEl, response.error.message || "Could not create policy debate setup.", true);
+                const errorCode = response.error.code ? `[${response.error.code}] ` : "";
+                const detail = response.error.details ? ` Details: ${response.error.details}` : "";
+                const hint = response.error.hint ? ` Hint: ${response.error.hint}` : "";
+                console.error("create_policy_debate_setup failed", {
+                    payload,
+                    error: response.error
+                });
+                setMessage(messageEl, `${errorCode}${response.error.message || "Could not create policy debate setup."}${detail}${hint}`, true);
                 return;
             }
 

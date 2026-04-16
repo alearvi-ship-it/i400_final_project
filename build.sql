@@ -1594,8 +1594,8 @@ begin
       (student_item ->> 'student_id')::uuid,
       greatest(coalesce((student_item ->> 'team_number')::int, 1), 1),
       case
-        when lower(coalesce(student_item ->> 'debate_stance', '')) in ('affirmative', 'negative')
-          then initcap(lower(student_item ->> 'debate_stance'))
+        when lower(coalesce(student_item ->> 'debate_stance', student_item ->> 'stance', '')) in ('affirmative', 'negative')
+          then initcap(lower(coalesce(student_item ->> 'debate_stance', student_item ->> 'stance')))
         else 'Affirmative'
       end,
       case
@@ -1651,7 +1651,7 @@ begin
     ) values (
       created_debate_id,
       (coach_item ->> 'coach_id')::uuid,
-      greatest(coalesce((coach_item ->> 'mentored_team_number')::int, 1), 1),
+      greatest(coalesce((coach_item ->> 'mentored_team_number')::int, (coach_item ->> 'team_number')::int, 1), 1),
       nullif(left(trim(coalesce(coach_item ->> 'notes', '')), 500), '')
     )
     on conflict (debate_id, coach_id, mentored_team_number) do update
