@@ -2861,8 +2861,6 @@ async function handlePolicySetupPage() {
         return `${stats.consistency_label || "Moderate consistency"} (${avg})`;
     }
 
-    }
-
     async function refreshJudgeRowConsistency(row) {
         const judgeId = row.querySelector("[data-judge-id]")?.value;
         const consistencyEl = row.querySelector("[data-judge-consistency]");
@@ -3005,23 +3003,39 @@ async function handlePolicySetupPage() {
         refillRoundOptions();
         setMessage(messageEl, "Ready to schedule a policy debate.", false);
 
-        tournamentSelect?.addEventListener("change", refillRoundOptions);
-        addStudentRowBtn?.addEventListener("click", addStudentRow);
-        addJudgeRowBtn?.addEventListener("click", addJudgeRow);
-        addCoachRowBtn?.addEventListener("click", addCoachRow);
+        if (tournamentSelect && !tournamentSelect.dataset.policyBound) {
+            tournamentSelect.addEventListener("change", refillRoundOptions);
+            tournamentSelect.dataset.policyBound = "true";
+        }
+        if (addStudentRowBtn && !addStudentRowBtn.dataset.policyBound) {
+            addStudentRowBtn.addEventListener("click", addStudentRow);
+            addStudentRowBtn.dataset.policyBound = "true";
+        }
+        if (addJudgeRowBtn && !addJudgeRowBtn.dataset.policyBound) {
+            addJudgeRowBtn.addEventListener("click", addJudgeRow);
+            addJudgeRowBtn.dataset.policyBound = "true";
+        }
+        if (addCoachRowBtn && !addCoachRowBtn.dataset.policyBound) {
+            addCoachRowBtn.addEventListener("click", addCoachRow);
+            addCoachRowBtn.dataset.policyBound = "true";
+        }
 
-        resetBtn?.addEventListener("click", () => {
-            form.reset();
-            if (debateDateInput) {
-                debateDateInput.value = new Date().toISOString().slice(0, 10);
-            }
-            refillRoundOptions();
-            resetRows();
-            setMessage(messageEl, "Form reset.", false);
-        });
+        if (resetBtn && !resetBtn.dataset.policyBound) {
+            resetBtn.addEventListener("click", () => {
+                form.reset();
+                if (debateDateInput) {
+                    debateDateInput.value = new Date().toISOString().slice(0, 10);
+                }
+                refillRoundOptions();
+                resetRows();
+                setMessage(messageEl, "Form reset.", false);
+            });
+            resetBtn.dataset.policyBound = "true";
+        }
 
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
+        if (form && !form.dataset.policyBound) {
+            form.addEventListener("submit", async (event) => {
+                event.preventDefault();
 
             const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
                 .map((row) => {
@@ -3091,10 +3105,15 @@ async function handlePolicySetupPage() {
                 return;
             }
 
-            const createdId = response.data;
-            setMessage(messageEl, `Policy debate created successfully (${createdId}).`, false);
-        });
+                const createdId = response.data;
+                setMessage(messageEl, `Policy debate created successfully (${createdId}).`, false);
+            });
+            form.dataset.policyBound = "true";
+        }
     }
+
+    resetRows();
+}
 
 async function setupSignOut() {
     const signOut = document.querySelector("[data-signout]");
