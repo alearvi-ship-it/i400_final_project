@@ -336,6 +336,11 @@ create table if not exists Judge_Consistency_Analytics (
 create index if not exists idx_judge_consistency_aff_pct on Judge_Consistency_Analytics(affirmative_pct);
 create index if not exists idx_judge_consistency_sd on Judge_Consistency_Analytics(consistency_sd);
 
+-- Add columns if they don't exist (for migration from old schema)
+alter table Judge_Consistency_Analytics add column if not exists avg_feedback_length numeric(6,2) not null default 0.0;
+alter table Judge_Consistency_Analytics add column if not exists feedback_length_stddev numeric(6,2) not null default 0.0;
+alter table Judge_Consistency_Analytics add column if not exists feedback_sample_count int not null default 0;
+
 drop function if exists public.refresh_judge_consistency_analytics(uuid);
 drop function if exists public.refresh_judge_consistency_analytics(uuid, int);
 
@@ -394,6 +399,22 @@ begin
       round(stddev(monthly_aff_pct), 2) as consistency_sd
     from monthly_stats
   ),
+  feedback_lengths as (
+    select length(coalesce(jp.feedback, ''''::text))
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = $1
+      and jp.feedback is not null
+      and trim(jp.feedback) <> ''''
+      %s
+  ),
+  feedback_stats as (
+    select
+      coalesce(round(avg(length)::numeric, 2), 0.0) as avg_feedback_length,
+      coalesce(round(stddev(length)::numeric, 2), 0.0) as feedback_length_stddev,
+      count(*)::int as feedback_sample_count
+    from feedback_lengths
+  ),
   metrics as (
     select
       fc.decided_count,
@@ -422,9 +443,13 @@ begin
         when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then ''Moderate negative lean''
         when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then ''Slight negative lean''
         else ''Neutral / Balanced''
-      end as lean_label
+      end as lean_label,
+      fs.avg_feedback_length,
+      fs.feedback_length_stddev,
+      fs.feedback_sample_count
     from fight_counts fc
     cross join consistency_metrics cm
+    cross join feedback_stats fs
   )
   select
     m.decided_count,
@@ -434,75 +459,55 @@ begin
     m.consistency_avg,
     m.consistency_sd,
     m.consistency_label,
-    m.lean_label
-  from metrics m', date_filter)
+    m.lean_label,
+    m.avg_feedback_length,
+    m.feedback_length_stddev,
+    m.feedback_sample_count
+  from metrics m', date_filter, date_filter)
   into rec
   using p_judge_id;
 
-  -- Calculate feedback length statistics
-  declare
-    v_avg_feedback_length numeric(6,2);
-    v_feedback_stddev numeric(6,2);
-    v_feedback_sample_count int;
-  begin
-    with feedback_lengths as (
-      select length(coalesce(jp.feedback, ''))
-      from J_Participation jp
-      join Debate d on d.debate_id = jp.debate_id
-      where jp.judge_id = p_judge_id
-        and jp.feedback is not null
-        and trim(jp.feedback) <> ''
-        %s
-    )
-    select
-      coalesce(round(avg(length)::numeric, 2), 0.0),
-      coalesce(round(stddev(length)::numeric, 2), 0.0),
-      count(*)
-    into v_avg_feedback_length, v_feedback_stddev, v_feedback_sample_count
-    from feedback_lengths;
-
-    insert into Judge_Consistency_Analytics (
-      judge_id,
-      decided_count,
-      affirmative_wins,
-      negative_wins,
-      affirmative_pct,
-      consistency_avg,
-      consistency_sd,
-      consistency_label,
-      lean_label,
-      avg_feedback_length,
-      feedback_length_stddev,
-      feedback_sample_count,
-      updated_at
-    ) values (
-      p_judge_id,
-      rec.decided_count,
-      rec.affirmative_wins,
-      rec.negative_wins,
-      rec.affirmative_pct,
-      rec.consistency_avg,
-      rec.consistency_sd,
-      rec.consistency_label,
-      rec.lean_label,
-      v_avg_feedback_length,
-      v_feedback_stddev,
-      v_feedback_sample_count,
-      now()
-    ) on conflict (judge_id) do update
-    set decided_count = excluded.decided_count,
-        affirmative_wins = excluded.affirmative_wins,
-        negative_wins = excluded.negative_wins,
-        affirmative_pct = excluded.affirmative_pct,
-        consistency_avg = excluded.consistency_avg,
-        consistency_sd = excluded.consistency_sd,
-        consistency_label = excluded.consistency_label,
-        lean_label = excluded.lean_label,
-        avg_feedback_length = excluded.avg_feedback_length,
-        feedback_length_stddev = excluded.feedback_length_stddev,
-        feedback_sample_count = excluded.feedback_sample_count,
-        updated_at = excluded.updated_at;
-  end;
+  insert into Judge_Consistency_Analytics (
+    judge_id,
+    decided_count,
+    affirmative_wins,
+    negative_wins,
+    affirmative_pct,
+    consistency_avg,
+    consistency_sd,
+    consistency_label,
+    lean_label,
+    avg_feedback_length,
+    feedback_length_stddev,
+    feedback_sample_count,
+    updated_at
+  ) values (
+    p_judge_id,
+    rec.decided_count,
+    rec.affirmative_wins,
+    rec.negative_wins,
+    rec.affirmative_pct,
+    rec.consistency_avg,
+    rec.consistency_sd,
+    rec.consistency_label,
+    rec.lean_label,
+    rec.avg_feedback_length,
+    rec.feedback_length_stddev,
+    rec.feedback_sample_count,
+    now()
+  ) on conflict (judge_id) do update
+  set decided_count = excluded.decided_count,
+      affirmative_wins = excluded.affirmative_wins,
+      negative_wins = excluded.negative_wins,
+      affirmative_pct = excluded.affirmative_pct,
+      consistency_avg = excluded.consistency_avg,
+      consistency_sd = excluded.consistency_sd,
+      consistency_label = excluded.consistency_label,
+      lean_label = excluded.lean_label,
+      avg_feedback_length = excluded.avg_feedback_length,
+      feedback_length_stddev = excluded.feedback_length_stddev,
+      feedback_sample_count = excluded.feedback_sample_count,
+      updated_at = excluded.updated_at;
 end;
 $$;
 
