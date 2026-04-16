@@ -1883,6 +1883,54 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         selectedEnd = new Date(selectedStart.getTime());
     }
 
+    const fetchAllJudgesConsistencyAverage = async (startAt, endAt) => {
+        const judgesResponse = await supabaseClient
+            .from(TABLES.judges)
+            .select("judge_id");
+
+        if (judgesResponse.error || !(judgesResponse.data || []).length) {
+            return null;
+        }
+
+        const judgeRows = judgesResponse.data || [];
+        const statsResponses = await Promise.all(
+            judgeRows.map((judge) => supabaseClient.rpc("get_judge_bias_stats", {
+                target_judge_id: judge.judge_id,
+                start_at: startAt ? startAt.toISOString() : null,
+                end_at: endAt ? endAt.toISOString() : null
+            }))
+        );
+
+        let consistencyTotal = 0;
+        let consistencyCount = 0;
+
+        statsResponses.forEach((response) => {
+            if (response?.error) {
+                return;
+            }
+
+            const row = getRpcSingleRow(response);
+            const decidedCount = Number(row?.decided_count || 0);
+            const consistencyAverage = Number(row?.consistency_avg);
+
+            if (decidedCount > 0 && Number.isFinite(consistencyAverage)) {
+                consistencyTotal += consistencyAverage;
+                consistencyCount += 1;
+            }
+        });
+
+        if (!consistencyCount) {
+            return null;
+        }
+
+        return {
+            overall_consistency_avg: Number((consistencyTotal / consistencyCount).toFixed(2)),
+            overall_consistency_judges: consistencyCount
+        };
+    };
+
+    const allJudgesConsistencyPromise = fetchAllJudgesConsistencyAverage(selectedStart, selectedEnd);
+
     const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
         target_judge_id: targetId,
         start_at: selectedStart ? selectedStart.toISOString() : null,
@@ -1982,6 +2030,14 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
                 ...fallbackFeedbackStats
             };
         }
+    }
+
+    const allJudgesConsistency = await allJudgesConsistencyPromise;
+    if (normalizedJudgeStats && allJudgesConsistency) {
+        normalizedJudgeStats = {
+            ...normalizedJudgeStats,
+            ...allJudgesConsistency
+        };
     }
 
     const rangeStart = judgeStats && judgeStats.range_start ? new Date(judgeStats.range_start) : null;
@@ -2090,6 +2146,8 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
         consistency_sd = 0,
         consistency_label = "Data unavailable",
         lean_label = "Bias data unavailable",
+        overall_consistency_avg = null,
+        overall_consistency_judges = 0,
         avg_feedback_length = 0,
         feedback_length_stddev = 0,
         feedback_sample_count = 0
@@ -2133,7 +2191,10 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-neg-count]", hasData ? negative_wins : "–");
     set("[data-bias-aff-pct]", affPctText);
     set("[data-bias-neg-pct]", negPctText);
-    set("[data-bias-consistency-avg]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-current]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-avg]", Number.isFinite(Number(overall_consistency_avg)) && Number(overall_consistency_judges) > 0
+        ? Number(overall_consistency_avg).toFixed(2)
+        : "–");
     set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
     set("[data-bias-consistency-label]", hasData ? consistency_label : "No data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
