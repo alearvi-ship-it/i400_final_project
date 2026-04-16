@@ -1883,7 +1883,7 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         selectedEnd = new Date(selectedStart.getTime());
     }
 
-    const fetchAllJudgesConsistencyAverage = async (startAt, endAt) => {
+    const fetchJudgeBenchmarkStats = async (startAt, endAt, currentJudgeId) => {
         const judgesResponse = await supabaseClient
             .from(TABLES.judges)
             .select("judge_id");
@@ -1903,18 +1903,52 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
 
         let consistencyTotal = 0;
         let consistencyCount = 0;
+        let otherFeedbackLengthTotal = 0;
+        let otherFeedbackLengthCount = 0;
+        let otherFeedbackStdDevTotal = 0;
+        let otherFeedbackStdDevCount = 0;
+        let otherFeedbackRatioTotal = 0;
+        let otherFeedbackRatioCount = 0;
 
-        statsResponses.forEach((response) => {
+        statsResponses.forEach((response, index) => {
             if (response?.error) {
                 return;
             }
 
             const row = getRpcSingleRow(response);
             const consistencyAverage = getResolvedConsistencyScore(row);
+            const judgeId = judgeRows[index]?.judge_id;
 
             if (Number.isFinite(consistencyAverage)) {
                 consistencyTotal += consistencyAverage;
                 consistencyCount += 1;
+            }
+
+            if (!row || judgeId === currentJudgeId) {
+                return;
+            }
+
+            const decidedCount = Number(row.decided_count || 0);
+            const feedbackCount = Number(row.feedback_sample_count || 0);
+
+            if (feedbackCount > 0) {
+                const otherAvgFeedbackLength = Number(row.avg_feedback_length);
+                if (Number.isFinite(otherAvgFeedbackLength)) {
+                    otherFeedbackLengthTotal += otherAvgFeedbackLength;
+                    otherFeedbackLengthCount += 1;
+                }
+
+                const otherFeedbackStdDev = Number(row.feedback_length_stddev);
+                if (Number.isFinite(otherFeedbackStdDev)) {
+                    otherFeedbackStdDevTotal += otherFeedbackStdDev;
+                    otherFeedbackStdDevCount += 1;
+                }
+            }
+
+            if (decidedCount > 0) {
+                const ratio = Math.max(0, Math.min(1, feedbackCount / decidedCount));
+                otherFeedbackRatioTotal += ratio;
+                otherFeedbackRatioCount += 1;
             }
         });
 
@@ -1924,11 +1958,20 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
 
         return {
             overall_consistency_avg: Number((consistencyTotal / consistencyCount).toFixed(2)),
-            overall_consistency_judges: consistencyCount
+            overall_consistency_judges: consistencyCount,
+            other_avg_feedback_length: otherFeedbackLengthCount
+                ? Number((otherFeedbackLengthTotal / otherFeedbackLengthCount).toFixed(2))
+                : null,
+            other_avg_feedback_stddev: otherFeedbackStdDevCount
+                ? Number((otherFeedbackStdDevTotal / otherFeedbackStdDevCount).toFixed(2))
+                : null,
+            other_avg_feedback_ratio: otherFeedbackRatioCount
+                ? Number((otherFeedbackRatioTotal / otherFeedbackRatioCount).toFixed(4))
+                : null
         };
     };
 
-    const allJudgesConsistencyPromise = fetchAllJudgesConsistencyAverage(selectedStart, selectedEnd);
+    const judgeBenchmarkStatsPromise = fetchJudgeBenchmarkStats(selectedStart, selectedEnd, targetId);
 
     const biasResponse = await supabaseClient.rpc("get_judge_bias_stats", {
         target_judge_id: targetId,
@@ -2035,17 +2078,17 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         const fallbackFeedbackStats = await fetchFallbackFeedbackAnalytics(targetId, selectedStart, selectedEnd);
         if (fallbackFeedbackStats) {
             normalizedJudgeStats = {
-                ...judgeStats,
+                ...normalizedJudgeStats,
                 ...fallbackFeedbackStats
             };
         }
     }
 
-    const allJudgesConsistency = await allJudgesConsistencyPromise;
-    if (normalizedJudgeStats && allJudgesConsistency) {
+    const judgeBenchmarkStats = await judgeBenchmarkStatsPromise;
+    if (normalizedJudgeStats && judgeBenchmarkStats) {
         normalizedJudgeStats = {
             ...normalizedJudgeStats,
-            ...allJudgesConsistency
+            ...judgeBenchmarkStats
         };
     }
 
@@ -2171,6 +2214,32 @@ function getResolvedConsistencyScore(stats) {
     return Number(fallbackScore.toFixed(2));
 }
 
+function getResolvedConsistencyStdDev(stats) {
+    if (!stats || typeof stats !== "object") {
+        return null;
+    }
+
+    const decidedCount = Number(stats.decided_count || 0);
+    if (decidedCount <= 0) {
+        return null;
+    }
+
+    const reportedStdDev = Number(stats.consistency_sd);
+    if (Number.isFinite(reportedStdDev) && reportedStdDev > 0) {
+        return reportedStdDev;
+    }
+
+    // Fallback for sparse windows where monthly SD is unavailable.
+    const affirmativePct = Number(stats.affirmative_pct);
+    if (!Number.isFinite(affirmativePct)) {
+        return null;
+    }
+
+    const ratio = Math.max(0, Math.min(1, affirmativePct / 100));
+    const fallbackStdDev = Math.sqrt(ratio * (1 - ratio)) * 100;
+    return Number(fallbackStdDev.toFixed(2));
+}
+
 function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     const {
         decided_count = 0,
@@ -2183,6 +2252,9 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
         lean_label = "Bias data unavailable",
         overall_consistency_avg = null,
         overall_consistency_judges = 0,
+        other_avg_feedback_length = null,
+        other_avg_feedback_stddev = null,
+        other_avg_feedback_ratio = null,
         avg_feedback_length = 0,
         feedback_length_stddev = 0,
         feedback_sample_count = 0
@@ -2190,17 +2262,20 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
 
     const hasData = decided_count > 0;
     const resolvedConsistencyScore = getResolvedConsistencyScore({ decided_count, consistency_avg, affirmative_pct });
+    const resolvedConsistencyStdDev = getResolvedConsistencyStdDev({ decided_count, consistency_sd, affirmative_pct });
     const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
     const consistencyPercent = hasData && Number.isFinite(resolvedConsistencyScore)
         ? clampPercent(Number(resolvedConsistencyScore))
         : 0;
     const stabilityPercent = hasData
-        ? clampPercent(100 - ((Math.min(Number(consistency_sd) || 0, 50) / 50) * 100))
+        ? clampPercent(100 - ((Math.min(Number(resolvedConsistencyStdDev) || 0, 50) / 50) * 100))
         : 0;
     const feedbackCoveragePercent = hasData
         ? clampPercent((Number(feedback_sample_count || 0) / Math.max(1, Number(decided_count || 0))) * 100)
         : 0;
     const feedbackLengthPercent = clampPercent((Math.min(Number(avg_feedback_length || 0), 600) / 600) * 100);
+    const feedbackRatioText = hasData ? `${Number(feedback_sample_count || 0)}/${Number(decided_count || 0)} (${Math.round(feedbackCoveragePercent)}%)` : "–";
+    const otherFeedbackRatioPercent = Number(other_avg_feedback_ratio) * 100;
 
     const affPctText = hasData ? `${affirmative_pct}%` : "–";
     const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "–";
@@ -2235,12 +2310,23 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-consistency-avg]", Number.isFinite(Number(overall_consistency_avg)) && Number(overall_consistency_judges) > 0
         ? Number(overall_consistency_avg).toFixed(2)
         : "–");
-    set("[data-bias-consistency-sd]", hasData ? Number(consistency_sd || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-sd]", hasData && Number.isFinite(resolvedConsistencyStdDev)
+        ? Number(resolvedConsistencyStdDev).toFixed(2)
+        : "–");
     set("[data-bias-consistency-label]", hasData ? consistency_label : "No data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
     set("[data-bias-avg-feedback-length]", feedback_sample_count > 0 ? Number(avg_feedback_length || 0).toFixed(0) : "–");
+    set("[data-bias-other-avg-feedback-length]", Number.isFinite(Number(other_avg_feedback_length))
+        ? Number(other_avg_feedback_length).toFixed(0)
+        : "–");
     set("[data-bias-feedback-stddev]", feedback_sample_count > 0 ? Number(feedback_length_stddev || 0).toFixed(0) : "–");
-    set("[data-bias-feedback-count]", feedback_sample_count > 0 ? feedback_sample_count : "–");
+    set("[data-bias-other-feedback-stddev]", Number.isFinite(Number(other_avg_feedback_stddev))
+        ? Number(other_avg_feedback_stddev).toFixed(0)
+        : "–");
+    set("[data-bias-feedback-ratio]", feedbackRatioText);
+    set("[data-bias-other-feedback-ratio]", Number.isFinite(otherFeedbackRatioPercent)
+        ? `${Math.round(otherFeedbackRatioPercent)}%`
+        : "–");
     set("[data-bias-visual-consistency-value]", `${Math.round(consistencyPercent)}%`);
     set("[data-bias-visual-stability-value]", `${Math.round(stabilityPercent)}%`);
     set("[data-bias-visual-coverage-value]", `${Math.round(feedbackCoveragePercent)}%`);
@@ -2288,10 +2374,10 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     const stabilityContext = !hasData
         ? "Stability appears when ruling variance is low."
         : stabilityPercent >= 70
-            ? `High stability: standard deviation is ${Number(consistency_sd || 0).toFixed(2)}, indicating predictable ruling behavior.`
+            ? `High stability: standard deviation is ${Number(resolvedConsistencyStdDev || 0).toFixed(2)}, indicating predictable ruling behavior.`
             : stabilityPercent >= 45
-                ? `Mid-range stability: standard deviation is ${Number(consistency_sd || 0).toFixed(2)} across evaluated rounds.`
-                : `Low stability: standard deviation of ${Number(consistency_sd || 0).toFixed(2)} suggests larger swings between rulings.`;
+                ? `Mid-range stability: standard deviation is ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} across evaluated rounds.`
+                : `Low stability: standard deviation of ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} suggests larger swings between rulings.`;
 
     const coverageContext = !hasData
         ? "Coverage increases as more rulings include feedback."
