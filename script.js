@@ -2096,6 +2096,16 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     } = stats || {};
 
     const hasData = decided_count > 0;
+    const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+    const consistencyPercent = hasData ? clampPercent(Number(consistency_avg)) : 0;
+    const stabilityPercent = hasData
+        ? clampPercent(100 - ((Math.min(Number(consistency_sd) || 0, 50) / 50) * 100))
+        : 0;
+    const feedbackCoveragePercent = hasData
+        ? clampPercent((Number(feedback_sample_count || 0) / Math.max(1, Number(decided_count || 0))) * 100)
+        : 0;
+    const feedbackLengthPercent = clampPercent((Math.min(Number(avg_feedback_length || 0), 600) / 600) * 100);
+
     const affPctText = hasData ? `${affirmative_pct}%` : "–";
     const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "–";
 
@@ -2130,6 +2140,74 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-avg-feedback-length]", feedback_sample_count > 0 ? Number(avg_feedback_length || 0).toFixed(0) : "–");
     set("[data-bias-feedback-stddev]", feedback_sample_count > 0 ? Number(feedback_length_stddev || 0).toFixed(0) : "–");
     set("[data-bias-feedback-count]", feedback_sample_count > 0 ? feedback_sample_count : "–");
+    set("[data-bias-visual-consistency-value]", `${Math.round(consistencyPercent)}%`);
+    set("[data-bias-visual-stability-value]", `${Math.round(stabilityPercent)}%`);
+    set("[data-bias-visual-coverage-value]", `${Math.round(feedbackCoveragePercent)}%`);
+
+    const setInsightWidth = (selector, percent) => {
+        const element = panelEl.querySelector(selector);
+        if (element) {
+            element.style.setProperty("--insight-width", `${clampPercent(percent)}%`);
+        }
+    };
+
+    const setInsightTier = (selector, percent, dataAvailable) => {
+        const element = panelEl.querySelector(selector);
+        if (!element) {
+            return;
+        }
+
+        if (!dataAvailable) {
+            element.textContent = "No data";
+            element.className = "bias-tier-badge bias-tier-badge--nodata";
+            return;
+        }
+
+        const normalized = clampPercent(percent);
+        if (normalized >= 75) {
+            element.textContent = "High";
+            element.className = "bias-tier-badge bias-tier-badge--high";
+        } else if (normalized >= 50) {
+            element.textContent = "Medium";
+            element.className = "bias-tier-badge bias-tier-badge--medium";
+        } else {
+            element.textContent = "Low";
+            element.className = "bias-tier-badge bias-tier-badge--low";
+        }
+    };
+
+    const consistencyContext = !hasData
+        ? "No scoring data in this range yet."
+        : consistencyPercent >= 75
+            ? `Very steady profile: average consistency score is ${Number(consistency_avg || 0).toFixed(1)} out of 100.`
+            : consistencyPercent >= 50
+                ? `Moderate consistency: average score is ${Number(consistency_avg || 0).toFixed(1)} with room for tighter alignment.`
+                : `Volatile consistency trend: average score is ${Number(consistency_avg || 0).toFixed(1)} in this window.`;
+
+    const stabilityContext = !hasData
+        ? "Stability appears when ruling variance is low."
+        : stabilityPercent >= 70
+            ? `High stability: standard deviation is ${Number(consistency_sd || 0).toFixed(2)}, indicating predictable ruling behavior.`
+            : stabilityPercent >= 45
+                ? `Mid-range stability: standard deviation is ${Number(consistency_sd || 0).toFixed(2)} across evaluated rounds.`
+                : `Low stability: standard deviation of ${Number(consistency_sd || 0).toFixed(2)} suggests larger swings between rulings.`;
+
+    const coverageContext = !hasData
+        ? "Coverage increases as more rulings include feedback."
+        : feedback_sample_count <= 0
+            ? "No feedback submissions attached to rulings in the selected range."
+            : `Feedback on ${feedback_sample_count} of ${decided_count} rulings (${Math.round(feedbackCoveragePercent)}% coverage), avg length ${Math.round(Number(avg_feedback_length || 0))} chars.`;
+
+    set("[data-bias-visual-consistency-context]", consistencyContext);
+    set("[data-bias-visual-stability-context]", stabilityContext);
+    set("[data-bias-visual-coverage-context]", coverageContext);
+
+    setInsightWidth("[data-bias-visual-consistency-fill]", consistencyPercent);
+    setInsightWidth("[data-bias-visual-stability-fill]", stabilityPercent);
+    setInsightWidth("[data-bias-visual-coverage-fill]", hasData ? Math.max(feedbackCoveragePercent, feedbackLengthPercent * 0.35) : 0);
+    setInsightTier("[data-bias-visual-consistency-tier]", consistencyPercent, hasData);
+    setInsightTier("[data-bias-visual-stability-tier]", stabilityPercent, hasData);
+    setInsightTier("[data-bias-visual-coverage-tier]", feedbackCoveragePercent, hasData);
 
     const noteEl = panelEl.querySelector("[data-bias-note]") || panelEl.querySelector(".bias-window-note");
     if (noteEl) {

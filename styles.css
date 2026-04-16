@@ -1356,6 +1356,113 @@ textarea {
     color: var(--text-strong);
 }
 
+.bias-insights {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.bias-insight-card {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.52);
+    border: 1px solid rgba(31, 29, 27, 0.1);
+}
+
+.bias-insight-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.bias-insight-head h4 {
+    margin: 0;
+    font-size: 0.86rem;
+    font-family: "Manrope", "Trebuchet MS", sans-serif;
+    font-weight: 700;
+    color: var(--text-strong);
+}
+
+.bias-tier-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    border: 1px solid transparent;
+}
+
+.bias-tier-badge--high {
+    color: #135d32;
+    background: rgba(26, 124, 62, 0.14);
+    border-color: rgba(26, 124, 62, 0.25);
+}
+
+.bias-tier-badge--medium {
+    color: #7a4f00;
+    background: rgba(207, 138, 46, 0.16);
+    border-color: rgba(207, 138, 46, 0.28);
+}
+
+.bias-tier-badge--low {
+    color: #8d1f2b;
+    background: rgba(184, 60, 40, 0.14);
+    border-color: rgba(184, 60, 40, 0.26);
+}
+
+.bias-tier-badge--nodata {
+    color: #455a73;
+    background: rgba(36, 59, 83, 0.12);
+    border-color: rgba(36, 59, 83, 0.2);
+}
+
+.bias-insight-head strong {
+    font-size: 0.95rem;
+    color: var(--accent-navy);
+}
+
+.bias-insight-track {
+    height: 9px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(36, 59, 83, 0.14);
+}
+
+.bias-insight-fill {
+    width: var(--insight-width, 0%);
+    height: 100%;
+    border-radius: 999px;
+    transition: width 450ms ease;
+}
+
+.bias-insight-fill--consistency {
+    background: linear-gradient(90deg, #cf8a2e, #1f7d44);
+}
+
+.bias-insight-fill--stability {
+    background: linear-gradient(90deg, #b83c28, #2f7aa3);
+}
+
+.bias-insight-fill--coverage {
+    background: linear-gradient(90deg, #8f2435, #243b53);
+}
+
+.bias-insight-card p {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
 @media (max-width: 980px) {
     .debates-shell {
         grid-template-columns: 1fr;
@@ -1420,5 +1527,9 @@ textarea {
         width: 100%;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .bias-insights {
+        grid-template-columns: 1fr;
     }
 }
