@@ -1910,10 +1910,9 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
             }
 
             const row = getRpcSingleRow(response);
-            const decidedCount = Number(row?.decided_count || 0);
-            const consistencyAverage = Number(row?.consistency_avg);
+            const consistencyAverage = getResolvedConsistencyScore(row);
 
-            if (decidedCount > 0 && Number.isFinite(consistencyAverage)) {
+            if (Number.isFinite(consistencyAverage)) {
                 consistencyTotal += consistencyAverage;
                 consistencyCount += 1;
             }
@@ -2021,6 +2020,16 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
 
     const judgeStats = getRpcSingleRow(biasResponse);
     let normalizedJudgeStats = judgeStats;
+
+    if (judgeStats) {
+        const resolvedConsistency = getResolvedConsistencyScore(judgeStats);
+        if (Number.isFinite(resolvedConsistency)) {
+            normalizedJudgeStats = {
+                ...judgeStats,
+                consistency_avg: resolvedConsistency
+            };
+        }
+    }
 
     if (judgeStats && !hasFeedbackAnalyticsFields(judgeStats)) {
         const fallbackFeedbackStats = await fetchFallbackFeedbackAnalytics(targetId, selectedStart, selectedEnd);
@@ -2136,6 +2145,32 @@ function getJudgeBiasErrorMessage(error, judgeName = "judge") {
     return `Error loading ${judgeName}'s performance data: ${sanitizedMessage || 'Unknown error occurred'}`;
 }
 
+function getResolvedConsistencyScore(stats) {
+    if (!stats || typeof stats !== "object") {
+        return null;
+    }
+
+    const decidedCount = Number(stats.decided_count || 0);
+    if (decidedCount <= 0) {
+        return null;
+    }
+
+    const reportedAverage = Number(stats.consistency_avg);
+    if (Number.isFinite(reportedAverage) && reportedAverage > 0) {
+        return reportedAverage;
+    }
+
+    // Fallback for sparse windows where backend monthly aggregation returns 0.
+    const affirmativePct = Number(stats.affirmative_pct);
+    if (!Number.isFinite(affirmativePct)) {
+        return null;
+    }
+
+    const ratio = Math.max(0, Math.min(1, affirmativePct / 100));
+    const fallbackScore = (1 - (4 * ratio * (1 - ratio))) * 100;
+    return Number(fallbackScore.toFixed(2));
+}
+
 function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     const {
         decided_count = 0,
@@ -2154,8 +2189,11 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     } = stats || {};
 
     const hasData = decided_count > 0;
+    const resolvedConsistencyScore = getResolvedConsistencyScore({ decided_count, consistency_avg, affirmative_pct });
     const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
-    const consistencyPercent = hasData ? clampPercent(Number(consistency_avg)) : 0;
+    const consistencyPercent = hasData && Number.isFinite(resolvedConsistencyScore)
+        ? clampPercent(Number(resolvedConsistencyScore))
+        : 0;
     const stabilityPercent = hasData
         ? clampPercent(100 - ((Math.min(Number(consistency_sd) || 0, 50) / 50) * 100))
         : 0;
@@ -2191,7 +2229,9 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-neg-count]", hasData ? negative_wins : "–");
     set("[data-bias-aff-pct]", affPctText);
     set("[data-bias-neg-pct]", negPctText);
-    set("[data-bias-consistency-current]", hasData ? Number(consistency_avg || 0).toFixed(2) : "–");
+    set("[data-bias-consistency-current]", hasData && Number.isFinite(resolvedConsistencyScore)
+        ? Number(resolvedConsistencyScore).toFixed(2)
+        : "–");
     set("[data-bias-consistency-avg]", Number.isFinite(Number(overall_consistency_avg)) && Number(overall_consistency_judges) > 0
         ? Number(overall_consistency_avg).toFixed(2)
         : "–");
@@ -2240,10 +2280,10 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     const consistencyContext = !hasData
         ? "No scoring data in this range yet."
         : consistencyPercent >= 75
-            ? `Very steady profile: average consistency score is ${Number(consistency_avg || 0).toFixed(1)} out of 100.`
+            ? `Very steady profile: average consistency score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} out of 100.`
             : consistencyPercent >= 50
-                ? `Moderate consistency: average score is ${Number(consistency_avg || 0).toFixed(1)} with room for tighter alignment.`
-                : `Volatile consistency trend: average score is ${Number(consistency_avg || 0).toFixed(1)} in this window.`;
+                ? `Moderate consistency: average score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} with room for tighter alignment.`
+                : `Volatile consistency trend: average score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} in this window.`;
 
     const stabilityContext = !hasData
         ? "Stability appears when ruling variance is low."

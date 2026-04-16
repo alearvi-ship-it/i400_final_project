@@ -1264,7 +1264,7 @@ textarea {
     gap: 1rem;
     margin: 1.2rem 0;
     padding: 1rem;
-    background: var(--surface);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
     border-radius: 12px;
     border: 1px solid var(--border);
     align-items: flex-end;
@@ -1284,11 +1284,26 @@ textarea {
 .date-range-edge input[type="date"],
 .date-range-edge input[type="time"] {
     width: 100%;
-    padding: 0.5rem 0.6rem;
+    padding: 0.55rem 0.7rem;
     border-radius: 8px;
-    border: 1px solid var(--border);
+    border: 1.5px solid rgba(82, 98, 130, 0.32);
     background: var(--background);
     color: var(--text);
+    cursor: pointer;
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+}
+
+.date-range-edge input[type="date"]:hover,
+.date-range-edge input[type="time"]:hover {
+    border-color: rgba(25, 114, 194, 0.65);
+}
+
+.date-range-edge input[type="date"]:focus-visible,
+.date-range-edge input[type="time"]:focus-visible {
+    outline: none;
+    border-color: #1972c2;
+    box-shadow: 0 0 0 3px rgba(25, 114, 194, 0.2);
+    transform: translateY(-1px);
 }
 
 .date-range-slider-group {
@@ -1296,10 +1311,55 @@ textarea {
     gap: 0.5rem;
 }
 
+.date-range-interaction-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
 .date-range-slider-group input[type="range"] {
     width: 100%;
     min-width: 100%;
     height: 28px;
+    cursor: pointer;
+    accent-color: #1972c2;
+}
+
+.date-range-slider-group input[type="range"]:focus-visible {
+    outline: none;
+}
+
+.date-range-slider-group input[type="range"]::-webkit-slider-runnable-track {
+    height: 10px;
+    border-radius: 99px;
+    background: linear-gradient(90deg, rgba(25, 114, 194, 0.9), rgba(25, 114, 194, 0.35));
+}
+
+.date-range-slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -4px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    background: #1972c2;
+    box-shadow: 0 0 0 2px rgba(25, 114, 194, 0.22);
+}
+
+.date-range-slider-group input[type="range"]::-moz-range-track {
+    height: 10px;
+    border-radius: 99px;
+    background: linear-gradient(90deg, rgba(25, 114, 194, 0.9), rgba(25, 114, 194, 0.35));
+}
+
+.date-range-slider-group input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    background: #1972c2;
+    box-shadow: 0 0 0 2px rgba(25, 114, 194, 0.22);
 }
 
 .range-labels {
