@@ -1066,13 +1066,39 @@ textarea {
 
 .policy-row {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
     gap: 10px;
-    align-items: end;
+    align-items: start;
     padding: 14px;
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-md);
     background: rgba(255, 255, 255, 0.42);
+}
+
+.policy-row .row-title {
+    grid-column: 1 / -1;
+}
+
+.policy-row .row-title h4 {
+    margin: 0;
+}
+
+.policy-row .row-title p {
+    margin: 4px 0 0;
+}
+
+.policy-row .grid-two {
+    grid-column: 1 / -1;
+}
+
+.policy-row .mini-card {
+    grid-column: span 2;
+}
+
+.policy-row .row-toolbar {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
 }
 
 .policy-row .field {
@@ -1089,7 +1115,7 @@ textarea {
 }
 
 .policy-notes-field {
-    grid-column: span 2;
+    grid-column: 1 / -1;
 }
 
 .policy-actions {
