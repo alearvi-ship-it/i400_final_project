@@ -24,7 +24,8 @@ const TABLES = {
     debate: "debate",
     tournament: "tournament",
     tournamentRound: "tournament_round",
-    studentParticipation: "s_participation"
+    studentParticipation: "s_participation",
+    judgeParticipation: "j_participation"
 };
 
 const PROFILE_CONFIG = {
@@ -1806,6 +1807,76 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         return Number.isNaN(parsed.getTime()) ? (fallback || null) : parsed;
     };
 
+    const hasFeedbackAnalyticsFields = (stats) => {
+        if (!stats || typeof stats !== "object") {
+            return false;
+        }
+
+        return Object.prototype.hasOwnProperty.call(stats, "avg_feedback_length")
+            && Object.prototype.hasOwnProperty.call(stats, "feedback_length_stddev")
+            && Object.prototype.hasOwnProperty.call(stats, "feedback_sample_count");
+    };
+
+    const calculateFeedbackAnalytics = (lengths) => {
+        const sampleCount = lengths.length;
+        if (!sampleCount) {
+            return {
+                avg_feedback_length: 0,
+                feedback_length_stddev: 0,
+                feedback_sample_count: 0
+            };
+        }
+
+        const mean = lengths.reduce((sum, value) => sum + value, 0) / sampleCount;
+        const variance = sampleCount > 1
+            ? lengths.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / (sampleCount - 1)
+            : 0;
+
+        return {
+            avg_feedback_length: Number(mean.toFixed(2)),
+            feedback_length_stddev: Number(Math.sqrt(variance).toFixed(2)),
+            feedback_sample_count: sampleCount
+        };
+    };
+
+    const fetchFallbackFeedbackAnalytics = async (judgeId, startAt, endAt) => {
+        const response = await supabaseClient
+            .from(TABLES.judgeParticipation)
+            .select("feedback, debate:debate_id(debate_date, debate_time)")
+            .eq("judge_id", judgeId)
+            .not("feedback", "is", null);
+
+        if (response.error) {
+            return null;
+        }
+
+        const inRangeLengths = (response.data || [])
+            .map((row) => {
+                const feedbackText = String(row.feedback || "").trim();
+                if (!feedbackText) {
+                    return null;
+                }
+
+                const debateDate = row.debate?.debate_date;
+                const debateTime = row.debate?.debate_time || "00:00:00";
+                const debateDateTime = debateDate ? new Date(`${debateDate}T${debateTime}`) : null;
+
+                if (debateDateTime && !Number.isNaN(debateDateTime.getTime())) {
+                    if (startAt && debateDateTime < startAt) {
+                        return null;
+                    }
+                    if (endAt && debateDateTime > endAt) {
+                        return null;
+                    }
+                }
+
+                return feedbackText.length;
+            })
+            .filter((value) => Number.isFinite(value));
+
+        return calculateFeedbackAnalytics(inRangeLengths);
+    };
+
     let selectedStart = parseInputDateTime(startDateInput, startTimeInput, null);
     let selectedEnd = parseInputDateTime(endDateInput, endTimeInput, null);
     if (selectedStart && selectedEnd && selectedEnd < selectedStart) {
@@ -1901,6 +1972,18 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
     console.log('Judge bias RPC response:', biasResponse);
 
     const judgeStats = getRpcSingleRow(biasResponse);
+    let normalizedJudgeStats = judgeStats;
+
+    if (judgeStats && !hasFeedbackAnalyticsFields(judgeStats)) {
+        const fallbackFeedbackStats = await fetchFallbackFeedbackAnalytics(targetId, selectedStart, selectedEnd);
+        if (fallbackFeedbackStats) {
+            normalizedJudgeStats = {
+                ...judgeStats,
+                ...fallbackFeedbackStats
+            };
+        }
+    }
+
     const rangeStart = judgeStats && judgeStats.range_start ? new Date(judgeStats.range_start) : null;
     const rangeEnd = judgeStats && judgeStats.range_end ? new Date(judgeStats.range_end) : null;
     setupRangeControls(rangeStart, rangeEnd);
@@ -1933,8 +2016,8 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         }
     } else {
         console.log('Judge stats extracted:', judgeStats);
-        if (judgeStats) {
-            renderJudgeBiasPanel(biasPanelEl, judgeStats, targetName);
+        if (normalizedJudgeStats) {
+            renderJudgeBiasPanel(biasPanelEl, normalizedJudgeStats, targetName);
         } else {
             renderJudgeBiasPanel(biasPanelEl, null, targetName);
             if (noteEl) {

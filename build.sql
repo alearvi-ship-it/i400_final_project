@@ -1743,6 +1743,9 @@ returns table (
   consistency_sd numeric,
   consistency_label text,
   lean_label text,
+  avg_feedback_length numeric,
+  feedback_length_stddev numeric,
+  feedback_sample_count int,
   range_start timestamptz,
   range_end timestamptz
 )
@@ -1828,6 +1831,23 @@ begin
       round(stddev(monthly_aff_pct), 2) as consistency_sd
     from monthly_stats
   ),
+  feedback_lengths as (
+    select length(coalesce(jp.feedback, ''::text)) as length
+    from J_Participation jp
+    join Debate d on d.debate_id = jp.debate_id
+    where jp.judge_id = target_judge_id
+      and jp.feedback is not null
+      and trim(jp.feedback) <> ''
+      and (start_at is null or (d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz >= start_at)
+      and (end_at is null or (d.debate_date + coalesce(d.debate_time, '00:00:00'))::timestamptz <= end_at)
+  ),
+  feedback_stats as (
+    select
+      coalesce(round(avg(length)::numeric, 2), 0.0) as avg_feedback_length,
+      coalesce(round(stddev(length)::numeric, 2), 0.0) as feedback_length_stddev,
+      count(*)::int as feedback_sample_count
+    from feedback_lengths
+  ),
   metrics as (
     select
       fc.decided_count,
@@ -1856,9 +1876,13 @@ begin
         when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 35 then 'Moderate negative lean'
         when round((fc.affirmative_wins::numeric / fc.decided_count::numeric) * 100, 1) <= 45 then 'Slight negative lean'
         else 'Neutral / Balanced'
-      end as lean_label
+      end as lean_label,
+      fs.avg_feedback_length,
+      fs.feedback_length_stddev,
+      fs.feedback_sample_count
     from fight_counts fc
     cross join consistency_metrics cm
+    cross join feedback_stats fs
   )
   select
     m.decided_count,
@@ -1870,6 +1894,9 @@ begin
     m.consistency_sd,
     m.consistency_label,
     m.lean_label,
+    m.avg_feedback_length,
+    m.feedback_length_stddev,
+    m.feedback_sample_count,
     fr.full_start as range_start,
     fr.full_end as range_end
   from metrics m
