@@ -3295,9 +3295,22 @@ async function handlePolicySetupPage() {
             target_judge_id: judgeId
         });
 
+        if (response?.error) {
+            console.error("get_judge_bias_stats failed", {
+                judgeId,
+                error: response.error
+            });
+            consistencyEl.textContent = /judge not found/i.test(response.error.message || "")
+                ? "Judge not found"
+                : "Consistency unavailable";
+            consistencyEl.dataset.consistencyScore = "";
+            updateJudgeBalanceWarning();
+            return;
+        }
+
         const judgeStats = getRpcSingleRow(response);
         if (!judgeStats) {
-            consistencyEl.textContent = "Consistency unavailable";
+            consistencyEl.textContent = "No consistency data";
             consistencyEl.dataset.consistencyScore = "";
             updateJudgeBalanceWarning();
             return;
@@ -3559,13 +3572,100 @@ async function handlePolicySetupPage() {
 
     async function populateForEdit(debateId) {
         setMessage(messageEl, "Loading debate for editing...", false);
-        const [debateRes, spRes, jpRes, cpRes] = await Promise.all([
+
+        async function loadStudentAssignmentsForEdit() {
+            const directResponse = await supabaseClient
+                .from(TABLES.studentParticipation)
+                .select("student_id, team_number, debate_stance, worldview, speaking_order, is_captain")
+                .eq("debate_id", debateId);
+
+            if (!directResponse.error && Array.isArray(directResponse.data) && directResponse.data.length) {
+                return directResponse.data;
+            }
+
+            if (!students.length) {
+                return [];
+            }
+
+            const parseRoleContext = (roleContext) => {
+                const text = String(roleContext || "").trim();
+                const match = text.match(/Team\s+(\d+)\s+•\s+([^|]+)/i);
+                if (!match) {
+                    return {
+                        teamNumber: null,
+                        debateStance: null
+                    };
+                }
+
+                const parsedTeamNumber = Number.parseInt(match[1], 10);
+                const rawStance = sanitizeText(match[2], 32);
+                const normalizedStance = /negative/i.test(rawStance)
+                    ? "Negative"
+                    : /affirmative/i.test(rawStance)
+                        ? "Affirmative"
+                        : null;
+
+                return {
+                    teamNumber: Number.isFinite(parsedTeamNumber) ? parsedTeamNumber : null,
+                    debateStance: normalizedStance
+                };
+            };
+
+            const historyResults = await Promise.allSettled(
+                students.map((student) => supabaseClient.rpc("get_user_debate_history", {
+                    target_account_type: "student",
+                    target_account_id: student.student_id
+                }))
+            );
+
+            const assignments = historyResults.flatMap((result, index) => {
+                if (result.status !== "fulfilled" || result.value?.error) {
+                    return [];
+                }
+
+                const matchingRecord = (result.value.data || []).find((record) => String(record.debate_id || "") === debateId);
+                if (!matchingRecord) {
+                    return [];
+                }
+
+                const parsed = parseRoleContext(matchingRecord.role_context);
+                return [{
+                    student_id: students[index].student_id,
+                    team_number: parsed.teamNumber,
+                    debate_stance: parsed.debateStance,
+                    worldview: "Moderate",
+                    speaking_order: null,
+                    is_captain: false
+                }];
+            });
+
+            if (assignments.length === 2) {
+                const distinctTeams = new Set(assignments.map((item) => item.team_number).filter((value) => value != null));
+                if (distinctTeams.size < 2) {
+                    assignments[0].team_number = 1;
+                    assignments[1].team_number = 2;
+                }
+
+                const normalizedStances = assignments.map((item) => String(item.debate_stance || "").toLowerCase());
+                if (!normalizedStances.includes("affirmative") || !normalizedStances.includes("negative")) {
+                    assignments[0].debate_stance = "Affirmative";
+                    assignments[1].debate_stance = "Negative";
+                }
+            }
+
+            return assignments.map((item) => ({
+                ...item,
+                team_number: toPositiveInt(item.team_number || 1, 1),
+                debate_stance: item.debate_stance || "Affirmative",
+                worldview: item.worldview || "Moderate"
+            }));
+        }
+
+        const studentAssignments = await loadStudentAssignmentsForEdit();
+        const [debateRes, jpRes, cpRes] = await Promise.all([
             supabaseClient.from(TABLES.debate)
                 .select("debate_id, debate_date, debate_time, topic, room, status, team_a_name, team_b_name, tournament_id, tournament_round_id")
                 .eq("debate_id", debateId).single(),
-            supabaseClient.from(TABLES.studentParticipation)
-                .select("student_id, team_number, debate_stance, worldview, speaking_order, is_captain")
-                .eq("debate_id", debateId),
             supabaseClient.from(TABLES.judgeParticipation)
                 .select("judge_id, panel_number")
                 .eq("debate_id", debateId),
@@ -3604,9 +3704,9 @@ async function handlePolicySetupPage() {
             roundSelect.value = debate.tournament_round_id;
         }
 
-        if (spRes.data?.length) {
+        if (studentAssignments.length) {
             studentRowsRoot.replaceChildren();
-            for (const sp of spRes.data) {
+            for (const sp of studentAssignments) {
                 addStudentRow();
                 const row = studentRowsRoot.lastElementChild;
                 if (!row) { continue; }
