@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -16,7 +16,7 @@
                 <p class="eyebrow">DebateHub</p>
                 <div class="sidebar-card">
                     <p class="hero-card-title" data-sidebar-title>Debate history</p>
-                    <p class="hero-card-body" data-sidebar-body>Your complete debate record — all rounds from every tournament.</p>
+                    <p class="hero-card-body" data-sidebar-body>Your complete debate record  -  all rounds from every tournament.</p>
                 </div>
             </div>
 
@@ -66,7 +66,7 @@
                     <h3 class="bias-panel-title">Judge Performance Analytics</h3>
                     <span class="admin-badge">Administrator Review</span>
                 </header>
-                <p class="bias-window-note" data-bias-note>Loading performance data…</p>
+                <p class="bias-window-note" data-bias-note>Loading performance data...</p>
                 
                 <div class="date-range-controls">
                     <div class="date-range-edge">
@@ -75,12 +75,17 @@
                         <input id="range-start-time" type="time" />
                     </div>
                     <div class="date-range-slider-group">
-                        <label for="date-range-slider">Analysis Time Range</label>
-                        <p class="date-range-interaction-hint">Drag the slider or edit start/end date and time fields.</p>
-                        <input type="range" id="date-range-slider" min="0" max="1" value="0" step="1">
+                        <label for="date-range-end-slider">Analysis Time Range</label>
+                        <p class="date-range-interaction-hint">Drag either handle to set the start and end range, or edit start/end date and time fields.</p>
+                        <div class="date-range-dual" data-date-range-dual>
+                            <div class="date-range-dual-track" aria-hidden="true"></div>
+                            <div class="date-range-dual-fill" id="date-range-selected-fill" aria-hidden="true"></div>
+                            <input type="range" id="date-range-start-slider" min="0" max="1" value="0" step="1" aria-label="Analysis start slider">
+                            <input type="range" id="date-range-end-slider" min="0" max="1" value="1" step="1" aria-label="Analysis end slider">
+                        </div>
                         <div class="range-labels">
-                            <span id="range-min-label">Earliest: —</span>
-                            <span id="range-max-label">Latest: —</span>
+                            <span id="range-min-label">Earliest: -</span>
+                            <span id="range-max-label">Latest: -</span>
                         </div>
                         <span id="date-range-label">All time</span>
                     </div>
@@ -95,38 +100,38 @@
                     <div class="bias-bar-group">
                         <div class="bias-bar-label">
                             <span class="bias-side affirmative-side">Affirmative wins</span>
-                            <span class="bias-count" data-bias-aff-count>–</span>
+                            <span class="bias-count" data-bias-aff-count>-</span>
                         </div>
                         <div class="bias-track">
                             <div class="bias-fill affirmative-fill" data-bias-bar-aff></div>
                         </div>
-                        <span class="bias-pct" data-bias-aff-pct>–</span>
+                        <span class="bias-pct" data-bias-aff-pct>-</span>
                     </div>
                     <div class="bias-bar-group">
                         <div class="bias-bar-label">
                             <span class="bias-side negative-side">Negative wins</span>
-                            <span class="bias-count" data-bias-neg-count>–</span>
+                            <span class="bias-count" data-bias-neg-count>-</span>
                         </div>
                         <div class="bias-track">
                             <div class="bias-fill negative-fill" data-bias-bar-neg></div>
                         </div>
-                        <span class="bias-pct" data-bias-neg-pct>–</span>
+                        <span class="bias-pct" data-bias-neg-pct>-</span>
                     </div>
                 </div>
                 <div class="bias-conclusion">
                     <span class="bias-lean-dot" data-bias-indicator></span>
-                    <p class="bias-lean-label" data-bias-label>–</p>
+                    <p class="bias-lean-label" data-bias-label>-</p>
                 </div>
                 <div class="bias-consistency-panel">
                     <section class="bias-stats-group" aria-label="Ruling consistency metrics">
                         <h4>Ruling Metrics</h4>
                         <div class="bias-consistency-stat">
                             <span>Consistency:</span>
-                            <strong data-bias-consistency-label>–</strong>
+                            <strong data-bias-consistency-label>-</strong>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Current judge consistency score <button class="help-bubble-btn" type="button" aria-expanded="false" aria-controls="help-consistency-explainer" data-help-toggle="consistency-explainer">?</button></span>
-                            <strong data-bias-consistency-current>–</strong>
+                            <strong data-bias-consistency-current>-</strong>
                             <span class="stat-range">(0-100)</span>
                         </div>
                         <div class="help-bubble-popover" id="help-consistency-explainer" hidden>
@@ -134,12 +139,12 @@
                         </div>
                         <div class="bias-consistency-stat">
                             <span>All judges average consistency score</span>
-                            <strong data-bias-consistency-avg>–</strong>
+                            <strong data-bias-consistency-avg>-</strong>
                             <span class="stat-range">(0-100)</span>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Current judge score standard deviation <button class="help-bubble-btn" type="button" aria-expanded="false" aria-controls="help-consistency-sd" data-help-toggle="consistency-sd">?</button></span>
-                            <strong data-bias-consistency-sd>–</strong>
+                            <strong data-bias-consistency-sd>-</strong>
                             <span class="stat-range">(0-50)</span>
                         </div>
                         <div class="help-bubble-popover" id="help-consistency-sd" hidden>
@@ -150,31 +155,31 @@
                         <h4>Feedback Metrics</h4>
                         <div class="bias-consistency-stat">
                             <span>Current judge avg feedback length</span>
-                            <strong data-bias-avg-feedback-length>–</strong>
+                            <strong data-bias-avg-feedback-length>-</strong>
                             <span class="stat-range">characters</span>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Other judges avg feedback length</span>
-                            <strong data-bias-other-avg-feedback-length>–</strong>
+                            <strong data-bias-other-avg-feedback-length>-</strong>
                             <span class="stat-range">characters</span>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Current judge feedback std. deviation</span>
-                            <strong data-bias-feedback-stddev>–</strong>
+                            <strong data-bias-feedback-stddev>-</strong>
                             <span class="stat-range">characters</span>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Other judges avg feedback std. deviation</span>
-                            <strong data-bias-other-feedback-stddev>–</strong>
+                            <strong data-bias-other-feedback-stddev>-</strong>
                             <span class="stat-range">characters</span>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Current judge feedback submission ratio</span>
-                            <strong data-bias-feedback-ratio>–</strong>
+                            <strong data-bias-feedback-ratio>-</strong>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>Other judges avg feedback submission ratio</span>
-                            <strong data-bias-other-feedback-ratio>–</strong>
+                            <strong data-bias-other-feedback-ratio>-</strong>
                         </div>
                     </section>
                 </div>

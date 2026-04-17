@@ -1,4 +1,4 @@
-const toggleButton = document.querySelector("[data-toggle-password]");
+﻿const toggleButton = document.querySelector("[data-toggle-password]");
 
 if (toggleButton) {
     toggleButton.addEventListener("click", () => {
@@ -777,7 +777,7 @@ function createHistoryCard(record) {
             <span class="${statusClass}">${escapeHtml(status)}</span>
             <div>
                 <h4 class="debate-title">${escapeHtml(record.topic || record.tournament_name || "Debate Round")}</h4>
-                <p class="debate-meta">${escapeHtml(`${when} • ${record.debate_type || "Debate"} • ${record.round_name || "Round"}`)}</p>
+                <p class="debate-meta">${escapeHtml(`${when}  -  ${record.debate_type || "Debate"}  -  ${record.round_name || "Round"}`)}</p>
                 <p class="debate-meta">${escapeHtml(record.role_context || "No extra context available.")}</p>
                 ${record.ruling_consistency_label ? `<p class="debate-meta"><strong>Consistency:</strong> ${escapeHtml(record.ruling_consistency_label)}${record.ruling_consistency_score != null ? ` (${Number(record.ruling_consistency_score).toFixed(3)})` : ''}</p>` : ''}
             </div>
@@ -969,7 +969,7 @@ function updateSettingsHeader(profile, user) {
     const fullName = getDisplayName(profile, user);
     const accountType = normalizeAccountType(profile?.accountType || user?.user_metadata?.account_type);
     updateText("[data-settings-name]", fullName);
-    updateText("[data-settings-copy]", `${profile?.school || "School not set"} • ${profile?.email || user?.email || "No email on file"} • ${getRoleLabel(accountType)}`);
+    updateText("[data-settings-copy]", `${profile?.school || "School not set"}  -  ${profile?.email || user?.email || "No email on file"}  -  ${getRoleLabel(accountType)}`);
 }
 
 function applySettingsPerspective(viewingOtherProfile) {
@@ -1669,7 +1669,7 @@ async function handleUserHistoryPage() {
             sidebarBodyEl.textContent = "Past debates you created or managed across tournaments.";
         } else {
             sidebarBodyEl.textContent = isSelfView
-                ? "Your complete debate record — all rounds from every tournament."
+                ? "Your complete debate record  -  all rounds from every tournament."
                 : "Reviewing the full debate history tied to this account.";
         }
     }
@@ -1785,10 +1785,10 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
     }
 
     if (noteEl) {
-        noteEl.textContent = `Loading performance analytics for ${targetName}…`;
-    }
-
-    const dateRangeSlider = document.getElementById('date-range-slider');
+        noteEl.textContent = `Loading performance analytics for ${targetName}...`;
+    }     const dateRangeStartSlider = document.getElementById('date-range-start-slider');
+    const dateRangeEndSlider = document.getElementById('date-range-end-slider');
+    const dateRangeSelectedFill = document.getElementById('date-range-selected-fill');
     const dateRangeLabel = document.getElementById('date-range-label');
     const rangeMinLabel = document.getElementById('range-min-label');
     const rangeMaxLabel = document.getElementById('range-max-label');
@@ -1980,69 +1980,118 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
     });
 
     const setupRangeControls = (fullStart, fullEnd) => {
-        if (!dateRangeSlider || !dateRangeLabel || !rangeMinLabel || !rangeMaxLabel) {
+        if (!dateRangeStartSlider || !dateRangeEndSlider || !dateRangeLabel || !rangeMinLabel || !rangeMaxLabel) {
             return;
         }
 
         if (!fullStart || !fullEnd || fullEnd < fullStart) {
-            dateRangeSlider.disabled = true;
+            dateRangeStartSlider.disabled = true;
+            dateRangeEndSlider.disabled = true;
             rangeMinLabel.textContent = 'Earliest: —';
             rangeMaxLabel.textContent = 'Latest: —';
+            dateRangeLabel.textContent = 'No data';
             return;
         }
 
-        const totalDays = Math.max(1, Math.round((fullEnd - fullStart) / 86400000));
-        dateRangeSlider.min = 0;
-        dateRangeSlider.max = totalDays;
-        dateRangeSlider.step = 1;
+        const dayMs = 86400000;
+        const totalDays = Math.max(1, Math.round((fullEnd - fullStart) / dayMs));
 
-        const defaultEnd = selectedEnd || fullEnd;
-        const sliderValue = Math.min(totalDays, Math.max(0, Math.round((defaultEnd - fullStart) / 86400000)));
-        dateRangeSlider.value = sliderValue;
-        dateRangeLabel.textContent = sliderValue === totalDays ? 'All time' : `Last ${sliderValue} days`;
+        const clampDate = (dateValue) => {
+            if (!dateValue || Number.isNaN(dateValue.getTime())) {
+                return null;
+            }
+            if (dateValue < fullStart) {
+                return new Date(fullStart.getTime());
+            }
+            if (dateValue > fullEnd) {
+                return new Date(fullEnd.getTime());
+            }
+            return new Date(dateValue.getTime());
+        };
+
+        const defaultStart = clampDate(selectedStart) || new Date(fullStart.getTime());
+        const defaultEnd = clampDate(selectedEnd) || new Date(fullEnd.getTime());
+        const initialStart = defaultStart <= defaultEnd ? defaultStart : new Date(defaultEnd.getTime());
+        const initialEnd = defaultEnd >= defaultStart ? defaultEnd : new Date(defaultStart.getTime());
+
+        dateRangeStartSlider.min = 0;
+        dateRangeStartSlider.max = totalDays;
+        dateRangeStartSlider.step = 1;
+        dateRangeEndSlider.min = 0;
+        dateRangeEndSlider.max = totalDays;
+        dateRangeEndSlider.step = 1;
+
+        dateRangeStartSlider.value = Math.min(totalDays, Math.max(0, Math.round((initialStart - fullStart) / dayMs)));
+        dateRangeEndSlider.value = Math.min(totalDays, Math.max(0, Math.round((initialEnd - fullStart) / dayMs)));
+
         rangeMinLabel.textContent = `Earliest: ${formatDateLabel(fullStart.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullStart.toISOString())}`;
         rangeMaxLabel.textContent = `Latest: ${formatDateLabel(fullEnd.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullEnd.toISOString())}`;
 
-        const hasUserStart = startDateInput && startDateInput.value;
-        const hasUserEnd = endDateInput && endDateInput.value;
+        const updateSliderState = () => {
+            let startOffsetDays = Number(dateRangeStartSlider.value);
+            let endOffsetDays = Number(dateRangeEndSlider.value);
 
-        if (!hasUserStart) {
+            if (startOffsetDays > endOffsetDays) {
+                endOffsetDays = startOffsetDays;
+                dateRangeEndSlider.value = String(endOffsetDays);
+            }
+
+            const startDateTime = new Date(fullStart.getTime() + (startOffsetDays * dayMs));
+            const endDateTime = new Date(fullStart.getTime() + (endOffsetDays * dayMs));
+
             if (startDateInput) {
-                startDateInput.value = fullStart.toISOString().slice(0, 10);
+                startDateInput.value = startDateTime.toISOString().slice(0, 10);
             }
             if (startTimeInput) {
-                startTimeInput.value = fullStart.toISOString().slice(11, 16);
+                startTimeInput.value = startDateTime.toISOString().slice(11, 16);
             }
-        }
-
-        if (!hasUserEnd) {
             if (endDateInput) {
-                endDateInput.value = defaultEnd.toISOString().slice(0, 10);
+                endDateInput.value = endDateTime.toISOString().slice(0, 10);
             }
             if (endTimeInput) {
-                endTimeInput.value = defaultEnd.toISOString().slice(11, 16);
+                endTimeInput.value = endDateTime.toISOString().slice(11, 16);
             }
-        }
 
-        if (!dateRangeSlider.hasAttribute('data-initialized')) {
-            const updateSliderLabel = () => {
-                const value = Number(dateRangeSlider.value);
-                dateRangeLabel.textContent = value === totalDays ? 'All time' : `Last ${value} days`;
+            if (dateRangeSelectedFill) {
+                const startPct = (startOffsetDays / totalDays) * 100;
+                const endPct = (endOffsetDays / totalDays) * 100;
+                dateRangeSelectedFill.style.setProperty('--range-start-pct', `${startPct}%`);
+                dateRangeSelectedFill.style.setProperty('--range-end-pct', `${endPct}%`);
+            }
+
+            const sameFullRange = startOffsetDays === 0 && endOffsetDays === totalDays;
+            dateRangeLabel.textContent = sameFullRange
+                ? 'All time'
+                : `${formatDateLabel(startDateTime.toISOString().slice(0, 10))} ${formatTimeLabel(null, startDateTime.toISOString())} to ${formatDateLabel(endDateTime.toISOString().slice(0, 10))} ${formatTimeLabel(null, endDateTime.toISOString())}`;
+        };
+
+        updateSliderState();
+
+        if (!dateRangeStartSlider.hasAttribute('data-initialized')) {
+            const onSliderInput = (isStartHandle) => {
+                let startOffsetDays = Number(dateRangeStartSlider.value);
+                let endOffsetDays = Number(dateRangeEndSlider.value);
+
+                if (isStartHandle && startOffsetDays > endOffsetDays) {
+                    endOffsetDays = startOffsetDays;
+                    dateRangeEndSlider.value = String(endOffsetDays);
+                }
+
+                if (!isStartHandle && endOffsetDays < startOffsetDays) {
+                    startOffsetDays = endOffsetDays;
+                    dateRangeStartSlider.value = String(startOffsetDays);
+                }
+
+                updateSliderState();
             };
 
-            dateRangeSlider.addEventListener('input', () => {
-                updateSliderLabel();
-                const offsetMs = Number(dateRangeSlider.value) * 86400000;
-                const newEnd = new Date(fullStart.getTime() + offsetMs);
-                if (endDateInput) {
-                    endDateInput.value = newEnd.toISOString().slice(0, 10);
-                }
-                if (endTimeInput) {
-                    endTimeInput.value = newEnd.toISOString().slice(11, 16);
-                }
-            });
+            dateRangeStartSlider.addEventListener('input', () => onSliderInput(true));
+            dateRangeEndSlider.addEventListener('input', () => onSliderInput(false));
 
-            dateRangeSlider.addEventListener('change', () => {
+            dateRangeStartSlider.addEventListener('change', () => {
+                loadJudgeAnalytics(targetId, targetName, biasPanelEl, historyRecords);
+            });
+            dateRangeEndSlider.addEventListener('change', () => {
                 loadJudgeAnalytics(targetId, targetName, biasPanelEl, historyRecords);
             });
 
@@ -2055,7 +2104,7 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
             endDateInput?.addEventListener('change', onDateInputChange);
             endTimeInput?.addEventListener('change', onDateInputChange);
 
-            dateRangeSlider.setAttribute('data-initialized', 'true');
+            dateRangeStartSlider.setAttribute('data-initialized', 'true');
         }
     };
 
@@ -2274,11 +2323,11 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
         ? clampPercent((Number(feedback_sample_count || 0) / Math.max(1, Number(decided_count || 0))) * 100)
         : 0;
     const feedbackLengthPercent = clampPercent((Math.min(Number(avg_feedback_length || 0), 600) / 600) * 100);
-    const feedbackRatioText = hasData ? `${Number(feedback_sample_count || 0)}/${Number(decided_count || 0)} (${Math.round(feedbackCoveragePercent)}%)` : "–";
+    const feedbackRatioText = hasData ? `${Number(feedback_sample_count || 0)}/${Number(decided_count || 0)} (${Math.round(feedbackCoveragePercent)}%)` : "-";
     const otherFeedbackRatioPercent = Number(other_avg_feedback_ratio) * 100;
 
-    const affPctText = hasData ? `${affirmative_pct}%` : "–";
-    const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "–";
+    const affPctText = hasData ? `${affirmative_pct}%` : "-";
+    const negPctText = hasData ? `${(100 - Number(affirmative_pct)).toFixed(1)}%` : "-";
 
     // Determine appropriate note text based on data availability
     let noteText;
@@ -2299,34 +2348,34 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
         }
     };
 
-    set("[data-bias-decided]", hasData ? decided_count : "–");
-    set("[data-bias-aff-count]", hasData ? affirmative_wins : "–");
-    set("[data-bias-neg-count]", hasData ? negative_wins : "–");
+    set("[data-bias-decided]", hasData ? decided_count : "-");
+    set("[data-bias-aff-count]", hasData ? affirmative_wins : "-");
+    set("[data-bias-neg-count]", hasData ? negative_wins : "-");
     set("[data-bias-aff-pct]", affPctText);
     set("[data-bias-neg-pct]", negPctText);
     set("[data-bias-consistency-current]", hasData && Number.isFinite(resolvedConsistencyScore)
         ? Number(resolvedConsistencyScore).toFixed(2)
-        : "–");
+        : "-");
     set("[data-bias-consistency-avg]", Number.isFinite(Number(overall_consistency_avg)) && Number(overall_consistency_judges) > 0
         ? Number(overall_consistency_avg).toFixed(2)
-        : "–");
+        : "-");
     set("[data-bias-consistency-sd]", hasData && Number.isFinite(resolvedConsistencyStdDev)
         ? Number(resolvedConsistencyStdDev).toFixed(2)
-        : "–");
+        : "-");
     set("[data-bias-consistency-label]", hasData ? consistency_label : "No data");
     set("[data-bias-label]", hasData ? lean_label : "No rulings on record");
-    set("[data-bias-avg-feedback-length]", feedback_sample_count > 0 ? Number(avg_feedback_length || 0).toFixed(0) : "–");
+    set("[data-bias-avg-feedback-length]", feedback_sample_count > 0 ? Number(avg_feedback_length || 0).toFixed(0) : "-");
     set("[data-bias-other-avg-feedback-length]", Number.isFinite(Number(other_avg_feedback_length))
         ? Number(other_avg_feedback_length).toFixed(0)
-        : "–");
-    set("[data-bias-feedback-stddev]", feedback_sample_count > 0 ? Number(feedback_length_stddev || 0).toFixed(0) : "–");
+        : "-");
+    set("[data-bias-feedback-stddev]", feedback_sample_count > 0 ? Number(feedback_length_stddev || 0).toFixed(0) : "-");
     set("[data-bias-other-feedback-stddev]", Number.isFinite(Number(other_avg_feedback_stddev))
         ? Number(other_avg_feedback_stddev).toFixed(0)
-        : "–");
+        : "-");
     set("[data-bias-feedback-ratio]", feedbackRatioText);
     set("[data-bias-other-feedback-ratio]", Number.isFinite(otherFeedbackRatioPercent)
         ? `${Math.round(otherFeedbackRatioPercent)}%`
-        : "–");
+        : "-");
     set("[data-bias-visual-consistency-value]", `${Math.round(consistencyPercent)}%`);
     set("[data-bias-visual-stability-value]", `${Math.round(stabilityPercent)}%`);
     set("[data-bias-visual-coverage-value]", `${Math.round(feedbackCoveragePercent)}%`);
@@ -2373,7 +2422,7 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
 
     const consistencyExplainerText = !hasData
         ? "Consistency index scores how one-sided this judge's rulings are overall. It peaks when all rulings go one way and drops toward zero when wins are split evenly between sides."
-        : `This score reflects how lopsided the judge's rulings are across the entire selected window. A high score means almost all rulings went to one side; a score near zero means wins were split fairly evenly. It does not say whether that pattern held steady over time — that is what Ruling Stability measures.`;
+        : `This score reflects how lopsided the judge's rulings are across the entire selected window. A high score means almost all rulings went to one side; a score near zero means wins were split fairly evenly. It does not say whether that pattern held steady over time  -  that is what Ruling Stability measures.`;
 
     const stabilityContext = !hasData
         ? "Temporal measure: how consistent the ruling pattern is month to month. Requires data across multiple months to diverge from the Consistency Index."
@@ -2437,7 +2486,7 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     }
 }
 
-// Help bubble toggle — delegated on document so it works after dynamic rendering
+// Help bubble toggle  -  delegated on document so it works after dynamic rendering
 if (!document.body.hasAttribute('data-help-bubbles-wired')) {
     document.body.setAttribute('data-help-bubbles-wired', 'true');
     document.addEventListener('click', (e) => {
@@ -2563,7 +2612,7 @@ function createUpcomingCard(record) {
     const eventName = record.debateType || "Debate";
     const status = record.status || "Scheduled";
     const when = formatDateLabel(record.debateDate);
-    const location = [record.hostSchool, record.location].filter(Boolean).join(" • ") || record.room || "Location TBD";
+    const location = [record.hostSchool, record.location].filter(Boolean).join("  -  ") || record.room || "Location TBD";
     const roundLabel = record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD");
     const coachNote = record.coaching[0]?.notes || "No coach note posted yet.";
 
@@ -2619,7 +2668,7 @@ function createPastCard(record) {
             <span class="${result.className}">${escapeHtml(result.label)}</span>
             <div>
                 <h4 class="debate-title">${escapeHtml(record.topic || record.tournamentName || "Debate Round")}</h4>
-                <p class="debate-meta">${escapeHtml(`${when} • ${record.debateType || "Debate"} • ${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</p>
+                <p class="debate-meta">${escapeHtml(`${when}  -  ${record.debateType || "Debate"}  -  ${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</p>
                 <p class="debate-meta">${escapeHtml(feedbackSnippet)}</p>
             </div>
         </div>
@@ -2776,7 +2825,7 @@ function createAdminUpcomingCard(record) {
     const eventName = record.debateType || "Debate";
     const status = record.status || "Scheduled";
     const when = formatDateLabel(record.debateDate);
-    const location = [record.hostSchool, record.location].filter(Boolean).join(" • ") || record.room || "Location TBD";
+    const location = [record.hostSchool, record.location].filter(Boolean).join("  -  ") || record.room || "Location TBD";
     const roundLabel = record.roundName || (record.roundNumber ? `Round ${record.roundNumber}` : "Round TBD");
 
     article.innerHTML = `
@@ -2866,7 +2915,7 @@ function createAdminPastCard(record) {
             <span class="result-badge result-badge--loss">${escapeHtml(readOnlyStatus)}</span>
             <div>
                 <h4 class="debate-title">${escapeHtml(record.topic || record.tournamentName || "Debate Round")}</h4>
-                <p class="debate-meta">${escapeHtml(`${when} • ${record.debateType || "Debate"} • ${roundText}`)}</p>
+                <p class="debate-meta">${escapeHtml(`${when}  -  ${record.debateType || "Debate"}  -  ${roundText}`)}</p>
                 <p class="debate-meta">${escapeHtml(`${record.teamAName || "Team A"} vs ${record.teamBName || "Team B"}`)}</p>
             </div>
         </div>
@@ -2889,7 +2938,7 @@ function updateDebatesSidebar(profile, records) {
     const wins = completedRecords.filter((record) => getResultLabel(record).label === "Win").length;
     const losses = completedRecords.filter((record) => getResultLabel(record).label === "Loss").length;
     const roleLabel = accountType === "student"
-        ? `${isCaptain ? "Captain" : "Member"} — ${debateType}`
+        ? `${isCaptain ? "Captain" : "Member"}  -  ${debateType}`
         : `${getRoleLabel(accountType)} account`;
 
     updateText("[data-user-avatar]", getInitials(fullName));
@@ -3196,7 +3245,7 @@ async function handlePolicySetupPage() {
             const option = document.createElement("option");
             option.value = round.tournament_round_id;
             const title = round.round_name || `Round ${round.round_number}`;
-            option.textContent = `${title} • ${round.debate_type || "Policy"}${round.room ? ` • ${round.room}` : ""}`;
+            option.textContent = `${title}  -  ${round.debate_type || "Policy"}${round.room ? `  -  ${round.room}` : ""}`;
             roundSelect.append(option);
         });
     }
