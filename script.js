@@ -3510,7 +3510,7 @@ async function handlePolicySetupPage() {
                         team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
                         debate_stance: debateStance,
                         stance: debateStance,
-                        worldview: sanitizeText(row.querySelector("[data-worldview]:checked")?.value || "Moderate", 12),
+                        worldview: sanitizeText(row.querySelector("[data-worldview]")?.value || "Moderate", 12),
                         speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
                         is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
                     };
