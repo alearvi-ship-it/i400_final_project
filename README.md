@@ -2,6 +2,8 @@
 
 Static frontend pages for a debate team website, now wired for Supabase auth/data and Render deployment.
 
+**Demo video:** [Debate Team Website (Judge Consistency & Policy Debates)](Debate%20Team%20Website%20%28Judge%20Consistency%20%26%20Policy%20Debates%29.mp4)
+
 ## Security hardening
 
 - Client-side input sanitization and validation are applied before Supabase auth, query, or RPC calls.
@@ -58,3 +60,7 @@ python -m http.server 5500
 Then open:
 
 http://localhost:5500/index.html
+
+---
+
+Developed in the class I400-Vibe and AI Programming, Spring 2026, IUB, with the assistance of the models ChatGPT and Copilot within VS Code.
