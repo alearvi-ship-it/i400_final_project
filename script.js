@@ -25,7 +25,8 @@ const TABLES = {
     tournament: "tournament",
     tournamentRound: "tournament_round",
     studentParticipation: "s_participation",
-    judgeParticipation: "j_participation"
+    judgeParticipation: "j_participation",
+    coachParticipation: "c_participation"
 };
 
 const PROFILE_CONFIG = {
@@ -2869,43 +2870,8 @@ function createAdminUpcomingCard(record) {
     `;
 
     const editButton = article.querySelector("[data-admin-edit-debate]");
-    editButton?.addEventListener("click", async () => {
-        const nextTopic = prompt("Update topic", record.topic || "") ?? null;
-        if (nextTopic === null) {
-            return;
-        }
-
-        const nextRoom = prompt("Update room", record.room || "") ?? null;
-        if (nextRoom === null) {
-            return;
-        }
-
-        const statusInput = prompt("Update status (scheduled, in_progress, or delayed)", (record.status || "scheduled")) ?? null;
-        if (statusInput === null) {
-            return;
-        }
-
-        const nextStatus = sanitizeText(statusInput, 32).toLowerCase();
-        if (!["scheduled", "in_progress", "delayed"].includes(nextStatus)) {
-            alert("Status must be one of: scheduled, in_progress, delayed.");
-            return;
-        }
-
-        const updateResponse = await supabaseClient
-            .from(TABLES.debate)
-            .update({
-                topic: sanitizeText(nextTopic, 500) || null,
-                room: sanitizeText(nextRoom, 50) || null,
-                status: nextStatus
-            })
-            .eq("debate_id", record.debateId);
-
-        if (updateResponse.error) {
-            alert(`Could not update debate: ${updateResponse.error.message}`);
-            return;
-        }
-
-        window.location.reload();
+    editButton?.addEventListener("click", () => {
+        window.location.href = `policy-setup.html?edit=${encodeURIComponent(record.debateId)}`;
     });
 
     return article;
@@ -3465,7 +3431,6 @@ async function handlePolicySetupPage() {
 
         refillTournamentOptions();
         refillRoundOptions();
-        setMessage(messageEl, "Ready to schedule a policy debate.", false);
 
         if (tournamentSelect && !tournamentSelect.dataset.policyBound) {
             tournamentSelect.addEventListener("change", refillRoundOptions);
@@ -3500,6 +3465,7 @@ async function handlePolicySetupPage() {
         if (form && !form.dataset.policyBound) {
             form.addEventListener("submit", async (event) => {
                 event.preventDefault();
+                if (form.dataset.editDebateId) { return; }
 
             const studentAssignments = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
                 .map((row) => {
@@ -3591,7 +3557,188 @@ async function handlePolicySetupPage() {
         }
     }
 
+    async function populateForEdit(debateId) {
+        setMessage(messageEl, "Loading debate for editing...", false);
+        const [debateRes, spRes, jpRes, cpRes] = await Promise.all([
+            supabaseClient.from(TABLES.debate)
+                .select("debate_id, debate_date, debate_time, topic, room, status, team_a_name, team_b_name, tournament_id, tournament_round_id")
+                .eq("debate_id", debateId).single(),
+            supabaseClient.from(TABLES.studentParticipation)
+                .select("student_id, team_number, debate_stance, worldview, speaking_order, is_captain")
+                .eq("debate_id", debateId),
+            supabaseClient.from(TABLES.judgeParticipation)
+                .select("judge_id, panel_number")
+                .eq("debate_id", debateId),
+            supabaseClient.from(TABLES.coachParticipation)
+                .select("coach_id, mentored_team_number, notes")
+                .eq("debate_id", debateId)
+        ]);
+        if (debateRes.error || !debateRes.data) {
+            setMessage(messageEl, "Could not load debate for editing.", true);
+            return;
+        }
+        const debate = debateRes.data;
+        const headingEl = document.querySelector(".debates-header h2");
+        const copyEl = document.querySelector(".debates-header .section-copy");
+        const submitBtn = form?.querySelector('button[type="submit"]');
+        if (headingEl) { headingEl.textContent = "Edit Policy Debate"; }
+        if (copyEl) { copyEl.textContent = "Update the debate details, teams, and assignments below."; }
+        if (submitBtn) { submitBtn.textContent = "Save changes"; }
+
+        const setField = (name, value) => {
+            const el = form?.querySelector(`[name="${name}"]`);
+            if (el && value != null) { el.value = value; }
+        };
+        setField("debate_date", debate.debate_date);
+        setField("debate_time", debate.debate_time);
+        setField("topic", debate.topic);
+        setField("room", debate.room);
+        setField("team_a_name", debate.team_a_name);
+        setField("team_b_name", debate.team_b_name);
+
+        if (tournamentSelect && debate.tournament_id) {
+            tournamentSelect.value = debate.tournament_id;
+            refillRoundOptions();
+        }
+        if (roundSelect && debate.tournament_round_id) {
+            roundSelect.value = debate.tournament_round_id;
+        }
+
+        if (spRes.data?.length) {
+            studentRowsRoot.replaceChildren();
+            for (const sp of spRes.data) {
+                addStudentRow();
+                const row = studentRowsRoot.lastElementChild;
+                if (!row) { continue; }
+                const setVal = (sel, val) => { const el = row.querySelector(sel); if (el && val != null) { el.value = val; } };
+                setVal("[data-student-id]", sp.student_id);
+                setVal("[data-debate-stance]", sp.debate_stance);
+                setVal("[data-worldview]", sp.worldview || "Moderate");
+                setVal("[data-team-number]", sp.team_number ?? 1);
+                if (sp.speaking_order != null) { setVal("[data-speaking-order]", sp.speaking_order); }
+                const captainEl = row.querySelector("[data-is-captain]");
+                if (captainEl) { captainEl.checked = Boolean(sp.is_captain); }
+            }
+        }
+
+        if (jpRes.data?.length) {
+            judgeRowsRoot.replaceChildren();
+            for (const jp of jpRes.data) {
+                addJudgeRow();
+                const row = judgeRowsRoot.lastElementChild;
+                if (row && jp.judge_id) {
+                    const judgeSelectEl = row.querySelector("[data-judge-id]");
+                    if (judgeSelectEl) { judgeSelectEl.value = jp.judge_id; judgeSelectEl.dispatchEvent(new Event("change")); }
+                }
+            }
+        }
+
+        if (cpRes.data?.length) {
+            coachRowsRoot.replaceChildren();
+            for (const cp of cpRes.data) {
+                addCoachRow();
+                const row = coachRowsRoot.lastElementChild;
+                if (!row) { continue; }
+                const coachSel = row.querySelector("[data-coach-id]");
+                if (coachSel && cp.coach_id) { coachSel.value = cp.coach_id; }
+                const teamNumEl = row.querySelector("[data-mentored-team-number]");
+                if (teamNumEl) { teamNumEl.value = cp.mentored_team_number ?? 1; }
+                const notesEl = row.querySelector("[data-coach-notes]");
+                if (notesEl && cp.notes) { notesEl.value = cp.notes; }
+            }
+        }
+
+        // Override submit to update
+        form.dataset.editDebateId = debateId;
+        form.dataset.policyBound = "";
+        form.addEventListener("submit", async (event) => {
+            if (!form.dataset.editDebateId) { return; }
+            event.preventDefault();
+
+            const editStudents = Array.from(studentRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => {
+                    const studentId = sanitizeUuid(row.querySelector("[data-student-id]")?.value || "");
+                    const stance = sanitizeText(row.querySelector("[data-debate-stance]")?.value || "Affirmative", 24);
+                    return {
+                        student_id: studentId,
+                        team_number: toPositiveInt(row.querySelector("[data-team-number]")?.value || 1, 1),
+                        debate_stance: stance,
+                        worldview: sanitizeText(row.querySelector("[data-worldview]")?.value || "Moderate", 12),
+                        speaking_order: toPositiveInt(row.querySelector("[data-speaking-order]")?.value || "", null),
+                        is_captain: Boolean(row.querySelector("[data-is-captain]")?.checked)
+                    };
+                }).filter((s) => s.student_id);
+
+            const editJudges = Array.from(judgeRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => ({ judge_id: sanitizeUuid(row.querySelector("[data-judge-id]")?.value || ""), panel_number: 1 }))
+                .filter((j) => j.judge_id);
+
+            const editCoaches = Array.from(coachRowsRoot.querySelectorAll("[data-policy-row]"))
+                .map((row) => ({
+                    coach_id: sanitizeUuid(row.querySelector("[data-coach-id]")?.value || ""),
+                    mentored_team_number: toPositiveInt(row.querySelector("[data-mentored-team-number]")?.value || 1, 1),
+                    notes: sanitizeText(row.querySelector("[data-coach-notes]")?.value || "", 500) || null
+                })).filter((c) => c.coach_id);
+
+            if (editStudents.length < 2) { setMessage(messageEl, "Assign at least two students before saving.", true); return; }
+            const uniqueIds = new Set(editStudents.map((s) => s.student_id));
+            if (uniqueIds.size !== editStudents.length) { setMessage(messageEl, "Each student can only be assigned once.", true); return; }
+            if (editJudges.length > 0 && editJudges.length % 2 === 0) { setMessage(messageEl, `Judge panel must be odd-numbered (currently ${editJudges.length}).`, true); return; }
+
+            const editDate = sanitizeText(form.querySelector('input[name="debate_date"]')?.value || "", 32);
+            if (!editDate) { setMessage(messageEl, "Debate date is required.", true); return; }
+
+            setMessage(messageEl, "Saving changes...", false);
+
+            const debateUpdate = await supabaseClient.from(TABLES.debate).update({
+                debate_date: editDate,
+                debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
+                topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
+                room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
+                team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
+                team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
+                tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
+                tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null
+            }).eq("debate_id", debateId);
+
+            if (debateUpdate.error) { setMessage(messageEl, `Could not update debate: ${debateUpdate.error.message}`, true); return; }
+
+            await supabaseClient.from(TABLES.studentParticipation).delete().eq("debate_id", debateId);
+            if (editStudents.length) {
+                const sInsert = await supabaseClient.from(TABLES.studentParticipation).insert(
+                    editStudents.map((s) => ({ debate_id: debateId, student_id: s.student_id, team_number: s.team_number, debate_stance: s.debate_stance, worldview: s.worldview, speaking_order: s.speaking_order, is_captain: s.is_captain }))
+                );
+                if (sInsert.error) { setMessage(messageEl, `Debate saved but student assignments failed: ${sInsert.error.message}`, true); return; }
+            }
+
+            await supabaseClient.from(TABLES.judgeParticipation).delete().eq("debate_id", debateId);
+            if (editJudges.length) {
+                const jInsert = await supabaseClient.from(TABLES.judgeParticipation).insert(
+                    editJudges.map((j) => ({ debate_id: debateId, judge_id: j.judge_id, panel_number: j.panel_number }))
+                );
+                if (jInsert.error) { setMessage(messageEl, `Debate saved but judge assignments failed: ${jInsert.error.message}`, true); return; }
+            }
+
+            await supabaseClient.from(TABLES.coachParticipation).delete().eq("debate_id", debateId);
+            if (editCoaches.length) {
+                const cInsert = await supabaseClient.from(TABLES.coachParticipation).insert(
+                    editCoaches.map((c) => ({ debate_id: debateId, coach_id: c.coach_id, mentored_team_number: c.mentored_team_number, notes: c.notes }))
+                );
+                if (cInsert.error) { setMessage(messageEl, `Debate saved but coach assignments failed: ${cInsert.error.message}`, true); return; }
+            }
+
+            setMessage(messageEl, "Debate updated successfully.", false);
+        });
+
+        setMessage(messageEl, "Debate loaded for editing.", false);
+    }
+
     resetRows();
+
+    const editDebateId = sanitizeUuid(new URLSearchParams(window.location.search).get("edit") || "");
+    if (editDebateId) {
+        await populateForEdit(editDebateId);
+    }
 }
 
 async function setupSignOut() {
@@ -3599,14 +3746,12 @@ async function setupSignOut() {
     if (!signOut || !supabaseClient) {
         return;
     }
-
     signOut.addEventListener("click", async (event) => {
         event.preventDefault();
         await supabaseClient.auth.signOut();
         window.location.href = "index.html";
     });
 }
-
 function setupBackButtons() {
     const backButtons = document.querySelectorAll("[data-back-button]");
     if (!backButtons.length) {
