@@ -1425,6 +1425,57 @@ textarea {
     color: var(--text-muted);
 }
 
+.help-bubble-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(36, 59, 83, 0.35);
+    background: rgba(36, 59, 83, 0.07);
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    vertical-align: middle;
+    margin-left: 4px;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.help-bubble-btn:hover,
+.help-bubble-btn[aria-expanded="true"] {
+    background: rgba(25, 114, 194, 0.12);
+    border-color: rgba(25, 114, 194, 0.5);
+    color: #1972c2;
+}
+
+.help-bubble-popover {
+    grid-column: 1 / -1;
+    margin: 2px 0 4px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(25, 114, 194, 0.07);
+    border: 1px solid rgba(25, 114, 194, 0.2);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.help-bubble-popover p {
+    margin: 0;
+}
+
+.bias-insight-subtitle {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: lowercase;
+    letter-spacing: 0;
+}
+
 .bias-conclusion {
     display: flex;
     align-items: center;

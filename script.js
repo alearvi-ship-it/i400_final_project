@@ -2372,22 +2372,24 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
                 : `Volatile consistency trend: average score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} in this window.`;
 
     const consistencyExplainerText = !hasData
-        ? "Consistency index ranges from 0 to 100 and reflects ruling-side concentration over the selected window."
-        : `Consistency index uses selected-window affirmative rate (p): index = (1 - 4p(1 - p)) x 100. Higher values mean rulings cluster on one side; lower values mean a more even split.`;
+        ? "Consistency index scores how one-sided this judge's rulings are overall. It peaks when all rulings go one way and drops toward zero when wins are split evenly between sides."
+        : `This score reflects how lopsided the judge's rulings are across the entire selected window. A high score means almost all rulings went to one side; a score near zero means wins were split fairly evenly. It does not say whether that pattern held steady over time — that is what Ruling Stability measures.`;
 
     const stabilityContext = !hasData
-        ? "Stability appears when ruling variance is low."
-        : stabilityPercent >= 70
-            ? `High stability: standard deviation is ${Number(resolvedConsistencyStdDev || 0).toFixed(2)}, indicating predictable ruling behavior.`
-            : stabilityPercent >= 45
-                ? `Mid-range stability: standard deviation is ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} across evaluated rounds.`
-                : `Low stability: standard deviation of ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} suggests larger swings between rulings.`;
+        ? "Temporal measure: how consistent the ruling pattern is month to month. Requires data across multiple months to diverge from the Consistency Index."
+        : decided_count < 3
+            ? `Too few rulings to compute month-to-month variance; stability reflects the single observed window only.`
+            : stabilityPercent >= 70
+                ? `High month-to-month stability (SD ${Number(resolvedConsistencyStdDev || 0).toFixed(2)}): ruling pattern holds consistently across months.`
+                : stabilityPercent >= 45
+                    ? `Moderate stability (SD ${Number(resolvedConsistencyStdDev || 0).toFixed(2)}): some month-to-month variation in ruling balance.`
+                    : `Low stability (SD ${Number(resolvedConsistencyStdDev || 0).toFixed(2)}): ruling balance shifts significantly between months.`;
 
     const sdExplanationText = !hasData
-        ? "Standard deviation is shown when ruling data is available."
+        ? "Standard deviation will appear once ruling data is available. It measures how much this judge's ruling balance shifts from month to month."
         : Number(resolvedConsistencyStdDev || 0) === 0
-            ? "A 0.00 standard deviation indicates no observed spread in this window (for example, rulings were all on one side), not a calculation failure."
-            : `Standard deviation summarizes spread around the ruling balance index in this window; larger values indicate greater variability.`;
+            ? "A value of 0.00 here is not an error. It means all rulings in this window fell on the same side, so there was no observable variation to measure."
+            : `This value shows how much the judge's ruling balance varied from month to month within the selected window. A small number means the pattern was steady; a larger number means it swung noticeably between months.`;
 
     const coverageContext = !hasData
         ? "Coverage increases as more rulings include feedback."
@@ -2433,6 +2435,26 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
             : "neutral";
         indicatorEl.className = `bias-lean-dot bias-lean-dot--${lean}`;
     }
+}
+
+// Help bubble toggle — delegated on document so it works after dynamic rendering
+if (!document.body.hasAttribute('data-help-bubbles-wired')) {
+    document.body.setAttribute('data-help-bubbles-wired', 'true');
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-help-toggle]');
+        if (!btn) {
+            return;
+        }
+
+        const popover = document.getElementById(`help-${btn.dataset.helpToggle}`);
+        if (!popover) {
+            return;
+        }
+
+        const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!isExpanded));
+        popover.hidden = isExpanded;
+    });
 }
 
 function formatDateLabel(isoDate) {

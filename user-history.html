@@ -125,9 +125,12 @@
                             <strong data-bias-consistency-label>–</strong>
                         </div>
                         <div class="bias-consistency-stat">
-                            <span>Current judge consistency score</span>
+                            <span>Current judge consistency score <button class="help-bubble-btn" type="button" aria-expanded="false" aria-controls="help-consistency-explainer" data-help-toggle="consistency-explainer">?</button></span>
                             <strong data-bias-consistency-current>–</strong>
                             <span class="stat-range">(0-100)</span>
+                        </div>
+                        <div class="help-bubble-popover" id="help-consistency-explainer" hidden>
+                            <p data-bias-consistency-explainer>Consistency index explanation will appear when data loads.</p>
                         </div>
                         <div class="bias-consistency-stat">
                             <span>All judges average consistency score</span>
@@ -135,12 +138,13 @@
                             <span class="stat-range">(0-100)</span>
                         </div>
                         <div class="bias-consistency-stat">
-                            <span>Current judge score standard deviation</span>
+                            <span>Current judge score standard deviation <button class="help-bubble-btn" type="button" aria-expanded="false" aria-controls="help-consistency-sd" data-help-toggle="consistency-sd">?</button></span>
                             <strong data-bias-consistency-sd>–</strong>
                             <span class="stat-range">(0-50)</span>
                         </div>
-                        <p class="bias-metric-note" data-bias-consistency-explainer>Consistency index explanation will appear when data loads.</p>
-                        <p class="bias-metric-note" data-bias-consistency-sd-note>Standard deviation explanation will appear when data loads.</p>
+                        <div class="help-bubble-popover" id="help-consistency-sd" hidden>
+                            <p data-bias-consistency-sd-note>Standard deviation explanation will appear when data loads.</p>
+                        </div>
                     </section>
                     <section class="bias-stats-group" aria-label="Feedback metrics">
                         <h4>Feedback Metrics</h4>
@@ -177,7 +181,7 @@
                 <section class="bias-insights" aria-label="Judge analytics insights">
                     <article class="bias-insight-card">
                         <div class="bias-insight-head">
-                            <h4>Consistency Index <span class="bias-tier-badge bias-tier-badge--nodata" data-bias-visual-consistency-tier>No data</span></h4>
+                            <h4>Consistency Index <span class="bias-insight-subtitle">(snapshot)</span> <span class="bias-tier-badge bias-tier-badge--nodata" data-bias-visual-consistency-tier>No data</span></h4>
                             <strong data-bias-visual-consistency-value>0%</strong>
                         </div>
                         <div class="bias-insight-track" role="presentation">
@@ -188,7 +192,7 @@
 
                     <article class="bias-insight-card">
                         <div class="bias-insight-head">
-                            <h4>Ruling Stability <span class="bias-tier-badge bias-tier-badge--nodata" data-bias-visual-stability-tier>No data</span></h4>
+                            <h4>Ruling Stability <span class="bias-insight-subtitle">(over time)</span> <span class="bias-tier-badge bias-tier-badge--nodata" data-bias-visual-stability-tier>No data</span></h4>
                             <strong data-bias-visual-stability-value>0%</strong>
                         </div>
                         <div class="bias-insight-track" role="presentation">
