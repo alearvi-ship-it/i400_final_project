@@ -884,7 +884,7 @@ insert into S_Participation (
   ('70000000-0000-0000-0000-000000000034', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000007', 1, 'Affirmative', 2, false),
   ('70000000-0000-0000-0000-000000000035', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000003', 2, 'Negative', 1, true),
   ('70000000-0000-0000-0000-000000000036', '60000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000006', 2, 'Negative', 2, false)
-on conflict (s_participation_id) do nothing;
+on conflict (debate_id, student_id) do nothing;
 
 insert into J_Participation (
   j_participation_id, debate_id, judge_id, panel_number, ruling, score, feedback
