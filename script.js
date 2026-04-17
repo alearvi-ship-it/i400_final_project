@@ -1786,7 +1786,9 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
 
     if (noteEl) {
         noteEl.textContent = `Loading performance analytics for ${targetName}...`;
-    }     const dateRangeStartSlider = document.getElementById('date-range-start-slider');
+    }
+
+    const dateRangeStartSlider = document.getElementById('date-range-start-slider');
     const dateRangeEndSlider = document.getElementById('date-range-end-slider');
     const dateRangeSelectedFill = document.getElementById('date-range-selected-fill');
     const dateRangeLabel = document.getElementById('date-range-label');
@@ -2027,6 +2029,13 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
         rangeMinLabel.textContent = `Earliest: ${formatDateLabel(fullStart.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullStart.toISOString())}`;
         rangeMaxLabel.textContent = `Latest: ${formatDateLabel(fullEnd.toISOString().slice(0, 10))} ${formatTimeLabel(null, fullEnd.toISOString())}`;
 
+        if (startTimeInput && !startTimeInput.value) {
+            startTimeInput.value = initialStart.toISOString().slice(11, 16);
+        }
+        if (endTimeInput && !endTimeInput.value) {
+            endTimeInput.value = initialEnd.toISOString().slice(11, 16);
+        }
+
         const updateSliderState = () => {
             let startOffsetDays = Number(dateRangeStartSlider.value);
             let endOffsetDays = Number(dateRangeEndSlider.value);
@@ -2042,14 +2051,8 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
             if (startDateInput) {
                 startDateInput.value = startDateTime.toISOString().slice(0, 10);
             }
-            if (startTimeInput) {
-                startTimeInput.value = startDateTime.toISOString().slice(11, 16);
-            }
             if (endDateInput) {
                 endDateInput.value = endDateTime.toISOString().slice(0, 10);
-            }
-            if (endTimeInput) {
-                endTimeInput.value = endDateTime.toISOString().slice(11, 16);
             }
 
             if (dateRangeSelectedFill) {
@@ -2060,9 +2063,16 @@ async function loadJudgeAnalytics(targetId, targetName, biasPanelEl = null, hist
             }
 
             const sameFullRange = startOffsetDays === 0 && endOffsetDays === totalDays;
+            const startLabelTime = startTimeInput && startTimeInput.value
+                ? formatTimeLabel(startTimeInput.value, null)
+                : formatTimeLabel(null, startDateTime.toISOString());
+            const endLabelTime = endTimeInput && endTimeInput.value
+                ? formatTimeLabel(endTimeInput.value, null)
+                : formatTimeLabel(null, endDateTime.toISOString());
+
             dateRangeLabel.textContent = sameFullRange
                 ? 'All time'
-                : `${formatDateLabel(startDateTime.toISOString().slice(0, 10))} ${formatTimeLabel(null, startDateTime.toISOString())} to ${formatDateLabel(endDateTime.toISOString().slice(0, 10))} ${formatTimeLabel(null, endDateTime.toISOString())}`;
+                : `${formatDateLabel(startDateTime.toISOString().slice(0, 10))} ${startLabelTime} to ${formatDateLabel(endDateTime.toISOString().slice(0, 10))} ${endLabelTime}`;
         };
 
         updateSliderState();
