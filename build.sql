@@ -905,7 +905,7 @@ insert into J_Participation (
   ('80000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000004', 3, 'Team 2 (Negative) wins', 28.75, 'Negative successfully defended their position. Good block development and strategic conceding.'),
   ('80000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000005', 3, 'Team 2 (Negative) wins', 27.25, 'Impact calculus favored the negative. Affirmative struggled with probability arguments in final focus.'),
   ('80000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000006', 3, 'Team 2 (Negative) wins', 28.00, 'Good strategic positioning. Negative advantage case outweighed affirmative''s solvency arguments.')
-on conflict (j_participation_id) do nothing;
+on conflict (debate_id, judge_id) do nothing;
 
 insert into C_Participation (
   c_participation_id, debate_id, coach_id, mentored_team_number, notes
@@ -930,7 +930,7 @@ insert into C_Participation (
   ('90000000-0000-0000-0000-000000000018', '60000000-0000-0000-0000-000000000010', '20000000-0000-0000-0000-000000000004', 2, 'Focus on impact weighing clarity.'),
   ('90000000-0000-0000-0000-000000000019', '60000000-0000-0000-0000-000000000011', '20000000-0000-0000-0000-000000000001', 1, 'Improve evidence presentation.'),
   ('90000000-0000-0000-0000-000000000020', '60000000-0000-0000-0000-000000000011', '20000000-0000-0000-0000-000000000002', 2, 'Work on rebuttal strategy.')
-on conflict (c_participation_id) do nothing;
+on conflict (debate_id, coach_id, mentored_team_number) do nothing;
 
 insert into Images (
   image_id, description, file_path, storage_bucket, storage_object_path, mime_type, student_id, judge_id, coach_id, admin_id
