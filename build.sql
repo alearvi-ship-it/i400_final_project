@@ -1727,6 +1727,166 @@ $$;
 
 grant execute on function public.create_policy_debate_setup(uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
+create or replace function public.update_policy_debate_setup(
+  p_debate_id uuid,
+  p_tournament_id uuid,
+  p_tournament_round_id uuid,
+  p_debate_date date,
+  p_debate_time time,
+  p_topic text,
+  p_room text,
+  p_team_a_name text,
+  p_team_b_name text,
+  p_student_assignments jsonb,
+  p_judge_assignments jsonb,
+  p_coach_assignments jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+  debate_exists boolean := false;
+  student_item jsonb;
+  judge_item jsonb;
+  coach_item jsonb;
+begin
+  perform set_config('app.skip_admin_audit', '1', true);
+  perform set_config('app.skip_judge_analytics', '1', true);
+
+  if viewer_uid is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+
+  select exists (
+    select 1
+    from Administrator a
+    where a.auth_user_id = viewer_uid
+      or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if not viewer_is_admin then
+    raise exception 'Only administrators can update policy debates.' using errcode = '42501';
+  end if;
+
+  if p_debate_id is null then
+    raise exception 'Debate ID is required.' using errcode = '23502';
+  end if;
+
+  if p_debate_date is null then
+    raise exception 'Debate date is required.' using errcode = '22023';
+  end if;
+
+  if coalesce(jsonb_array_length(coalesce(p_student_assignments, '[]'::jsonb)), 0) < 2 then
+    raise exception 'At least two student assignments are required.' using errcode = '22023';
+  end if;
+
+  select exists (select 1 from Debate d where d.debate_id = p_debate_id) into debate_exists;
+  if not debate_exists then
+    raise exception 'Debate not found.' using errcode = '23503';
+  end if;
+
+  update Debate
+  set tournament_id = p_tournament_id,
+      tournament_round_id = p_tournament_round_id,
+      debate_date = p_debate_date,
+      debate_time = p_debate_time,
+      topic = p_topic,
+      room = p_room,
+      team_a_name = nullif(trim(coalesce(p_team_a_name, '')), ''),
+      team_b_name = nullif(trim(coalesce(p_team_b_name, '')), ''),
+      updated_at = now()
+  where debate_id = p_debate_id;
+
+  delete from S_Participation where debate_id = p_debate_id;
+  delete from J_Participation where debate_id = p_debate_id;
+  delete from C_Participation where debate_id = p_debate_id;
+
+  for student_item in
+    select value from jsonb_array_elements(coalesce(p_student_assignments, '[]'::jsonb))
+  loop
+    if coalesce(student_item ->> 'student_id', '') = '' then
+      continue;
+    end if;
+
+    insert into S_Participation (
+      debate_id,
+      student_id,
+      team_number,
+      debate_stance,
+      worldview,
+      speaking_order,
+      is_captain
+    ) values (
+      p_debate_id,
+      (student_item ->> 'student_id')::uuid,
+      greatest(coalesce((student_item ->> 'team_number')::int, 1), 1),
+      case
+        when lower(coalesce(student_item ->> 'debate_stance', student_item ->> 'stance', '')) in ('affirmative', 'negative')
+          then initcap(lower(coalesce(student_item ->> 'debate_stance', student_item ->> 'stance')))
+        else 'Affirmative'
+      end,
+      case
+        when lower(coalesce(student_item ->> 'worldview', '')) in ('conservative', 'liberal', 'moderate')
+          then initcap(lower(student_item ->> 'worldview'))
+        else 'Moderate'
+      end,
+      nullif(student_item ->> 'speaking_order', '')::int,
+      coalesce((student_item ->> 'is_captain')::boolean, false)
+    );
+  end loop;
+
+  for judge_item in
+    select value from jsonb_array_elements(coalesce(p_judge_assignments, '[]'::jsonb))
+  loop
+    if coalesce(judge_item ->> 'judge_id', '') = '' then
+      continue;
+    end if;
+
+    insert into J_Participation (
+      debate_id,
+      judge_id,
+      panel_number
+    ) values (
+      p_debate_id,
+      (judge_item ->> 'judge_id')::uuid,
+      case when coalesce((judge_item ->> 'panel_number')::int, 1) % 2 = 1
+        then coalesce((judge_item ->> 'panel_number')::int, 1)
+        else 1
+      end
+    );
+  end loop;
+
+  for coach_item in
+    select value from jsonb_array_elements(coalesce(p_coach_assignments, '[]'::jsonb))
+  loop
+    if coalesce(coach_item ->> 'coach_id', '') = '' then
+      continue;
+    end if;
+
+    insert into C_Participation (
+      debate_id,
+      coach_id,
+      mentored_team_number,
+      notes
+    ) values (
+      p_debate_id,
+      (coach_item ->> 'coach_id')::uuid,
+      greatest(coalesce((coach_item ->> 'mentored_team_number')::int, (coach_item ->> 'team_number')::int, 1), 1),
+      nullif(left(trim(coalesce(coach_item ->> 'notes', '')), 500), '')
+    );
+  end loop;
+
+  return p_debate_id;
+end;
+$$;
+
+grant execute on function public.update_policy_debate_setup(uuid, uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
+
 -- Admins can view judge consistency analytics; judges cannot self-view these stats.
 create or replace function public.get_judge_bias_stats(
   target_judge_id uuid,

@@ -3280,6 +3280,49 @@ async function handlePolicySetupPage() {
         return `${stats.consistency_label || "Moderate consistency"} (${avg})`;
     }
 
+    async function getJudgeConsistencyFallback(judgeId) {
+        if (!judgeId || !supabaseClient) {
+            return null;
+        }
+
+        const historyResponse = await supabaseClient.rpc("get_user_debate_history", {
+            target_account_type: "judge",
+            target_account_id: judgeId
+        });
+
+        if (historyResponse?.error) {
+            return null;
+        }
+
+        const historyRows = Array.isArray(historyResponse?.data) ? historyResponse.data : [];
+        if (!historyRows.length) {
+            return {
+                text: "No consistency data",
+                score: null
+            };
+        }
+
+        const scores = historyRows
+            .map((row) => Number(row?.ruling_consistency_score))
+            .filter((value) => Number.isFinite(value));
+
+        if (!scores.length) {
+            const firstLabel = historyRows.find((row) => sanitizeText(row?.ruling_consistency_label || "", 64))?.ruling_consistency_label;
+            return {
+                text: firstLabel || "No consistency data",
+                score: null
+            };
+        }
+
+        const avg = scores.reduce((sum, value) => sum + value, 0) / scores.length;
+        const firstLabel = historyRows.find((row) => sanitizeText(row?.ruling_consistency_label || "", 64))?.ruling_consistency_label;
+
+        return {
+            text: `${firstLabel || "Moderate consistency"} (${avg.toFixed(2)})`,
+            score: avg
+        };
+    }
+
     async function refreshJudgeRowConsistency(row) {
         const judgeId = row.querySelector("[data-judge-id]")?.value;
         const consistencyEl = row.querySelector("[data-judge-consistency]");
@@ -3292,7 +3335,9 @@ async function handlePolicySetupPage() {
 
         consistencyEl.textContent = "Loading...";
         const response = await supabaseClient.rpc("get_judge_bias_stats", {
-            target_judge_id: judgeId
+            target_judge_id: judgeId,
+            start_at: null,
+            end_at: null
         });
 
         if (response?.error) {
@@ -3300,9 +3345,22 @@ async function handlePolicySetupPage() {
                 judgeId,
                 error: response.error
             });
-            consistencyEl.textContent = /judge not found/i.test(response.error.message || "")
-                ? "Judge not found"
-                : "Consistency unavailable";
+
+            const fallback = await getJudgeConsistencyFallback(judgeId);
+            if (fallback) {
+                consistencyEl.textContent = fallback.text;
+                consistencyEl.dataset.consistencyScore = Number.isFinite(fallback.score) ? String(fallback.score) : "";
+                updateJudgeBalanceWarning();
+                return;
+            }
+
+            if (/judge not found/i.test(response.error.message || "")) {
+                consistencyEl.textContent = "Judge not found";
+            } else if (/access denied|authentication required/i.test(response.error.message || "")) {
+                consistencyEl.textContent = "Consistency unavailable (admin access required)";
+            } else {
+                consistencyEl.textContent = "Consistency unavailable";
+            }
             consistencyEl.dataset.consistencyScore = "";
             updateJudgeBalanceWarning();
             return;
@@ -3790,41 +3848,30 @@ async function handlePolicySetupPage() {
 
             setMessage(messageEl, "Saving changes...", false);
 
-            const debateUpdate = await supabaseClient.from(TABLES.debate).update({
-                debate_date: editDate,
-                debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
-                topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
-                room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
-                team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
-                team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
-                tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
-                tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null
-            }).eq("debate_id", debateId);
+            const updatePayload = {
+                p_debate_id: debateId,
+                p_tournament_id: sanitizeUuid(tournamentSelect?.value || "") || null,
+                p_tournament_round_id: sanitizeUuid(roundSelect?.value || "") || null,
+                p_debate_date: editDate,
+                p_debate_time: sanitizeText(form.querySelector('input[name="debate_time"]')?.value || "", 16) || null,
+                p_topic: sanitizeText(form.querySelector('input[name="topic"]')?.value || "", 500) || null,
+                p_room: sanitizeText(form.querySelector('input[name="room"]')?.value || "", 50) || null,
+                p_team_a_name: sanitizeText(form.querySelector('input[name="team_a_name"]')?.value || "", 120) || null,
+                p_team_b_name: sanitizeText(form.querySelector('input[name="team_b_name"]')?.value || "", 120) || null,
+                p_student_assignments: editStudents,
+                p_judge_assignments: editJudges,
+                p_coach_assignments: editCoaches
+            };
 
-            if (debateUpdate.error) { setMessage(messageEl, `Could not update debate: ${debateUpdate.error.message}`, true); return; }
-
-            await supabaseClient.from(TABLES.studentParticipation).delete().eq("debate_id", debateId);
-            if (editStudents.length) {
-                const sInsert = await supabaseClient.from(TABLES.studentParticipation).insert(
-                    editStudents.map((s) => ({ debate_id: debateId, student_id: s.student_id, team_number: s.team_number, debate_stance: s.debate_stance, worldview: s.worldview, speaking_order: s.speaking_order, is_captain: s.is_captain }))
-                );
-                if (sInsert.error) { setMessage(messageEl, `Debate saved but student assignments failed: ${sInsert.error.message}`, true); return; }
-            }
-
-            await supabaseClient.from(TABLES.judgeParticipation).delete().eq("debate_id", debateId);
-            if (editJudges.length) {
-                const jInsert = await supabaseClient.from(TABLES.judgeParticipation).insert(
-                    editJudges.map((j) => ({ debate_id: debateId, judge_id: j.judge_id, panel_number: j.panel_number }))
-                );
-                if (jInsert.error) { setMessage(messageEl, `Debate saved but judge assignments failed: ${jInsert.error.message}`, true); return; }
-            }
-
-            await supabaseClient.from(TABLES.coachParticipation).delete().eq("debate_id", debateId);
-            if (editCoaches.length) {
-                const cInsert = await supabaseClient.from(TABLES.coachParticipation).insert(
-                    editCoaches.map((c) => ({ debate_id: debateId, coach_id: c.coach_id, mentored_team_number: c.mentored_team_number, notes: c.notes }))
-                );
-                if (cInsert.error) { setMessage(messageEl, `Debate saved but coach assignments failed: ${cInsert.error.message}`, true); return; }
+            const updateResponse = await supabaseClient.rpc("update_policy_debate_setup", updatePayload);
+            if (updateResponse.error) {
+                const isMissingFn = /function .*update_policy_debate_setup.*does not exist|Could not find the function/i.test(updateResponse.error.message || "");
+                if (isMissingFn) {
+                    setMessage(messageEl, "Update function is not deployed yet. Run the latest SQL in build.sql, then try saving again.", true);
+                    return;
+                }
+                setMessage(messageEl, `Could not update debate: ${updateResponse.error.message}`, true);
+                return;
             }
 
             setMessage(messageEl, "Debate updated successfully.", false);
