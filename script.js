@@ -2371,6 +2371,10 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
                 ? `Moderate consistency: average score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} with room for tighter alignment.`
                 : `Volatile consistency trend: average score is ${Number(resolvedConsistencyScore || 0).toFixed(1)} in this window.`;
 
+    const consistencyExplainerText = !hasData
+        ? "Consistency index ranges from 0 to 100 and reflects ruling-side concentration over the selected window."
+        : `Consistency index uses selected-window affirmative rate (p): index = (1 - 4p(1 - p)) x 100. Higher values mean rulings cluster on one side; lower values mean a more even split.`;
+
     const stabilityContext = !hasData
         ? "Stability appears when ruling variance is low."
         : stabilityPercent >= 70
@@ -2378,6 +2382,12 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
             : stabilityPercent >= 45
                 ? `Mid-range stability: standard deviation is ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} across evaluated rounds.`
                 : `Low stability: standard deviation of ${Number(resolvedConsistencyStdDev || 0).toFixed(2)} suggests larger swings between rulings.`;
+
+    const sdExplanationText = !hasData
+        ? "Standard deviation is shown when ruling data is available."
+        : Number(resolvedConsistencyStdDev || 0) === 0
+            ? "A 0.00 standard deviation indicates no observed spread in this window (for example, rulings were all on one side), not a calculation failure."
+            : `Standard deviation summarizes spread around the ruling balance index in this window; larger values indicate greater variability.`;
 
     const coverageContext = !hasData
         ? "Coverage increases as more rulings include feedback."
@@ -2388,6 +2398,8 @@ function renderJudgeBiasPanel(panelEl, stats, judgeName = "judge") {
     set("[data-bias-visual-consistency-context]", consistencyContext);
     set("[data-bias-visual-stability-context]", stabilityContext);
     set("[data-bias-visual-coverage-context]", coverageContext);
+    set("[data-bias-consistency-explainer]", consistencyExplainerText);
+    set("[data-bias-consistency-sd-note]", sdExplanationText);
 
     setInsightWidth("[data-bias-visual-consistency-fill]", consistencyPercent);
     setInsightWidth("[data-bias-visual-stability-fill]", stabilityPercent);

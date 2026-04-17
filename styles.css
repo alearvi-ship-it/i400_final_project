@@ -1418,6 +1418,13 @@ textarea {
     color: var(--text-strong);
 }
 
+.bias-metric-note {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
 .bias-conclusion {
     display: flex;
     align-items: center;
