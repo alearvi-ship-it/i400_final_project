@@ -1887,6 +1887,94 @@ $$;
 
 grant execute on function public.update_policy_debate_setup(uuid, uuid, uuid, date, time, text, text, text, text, jsonb, jsonb, jsonb) to authenticated;
 
+create or replace function public.get_policy_debate_setup(
+  p_debate_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer_uid uuid := auth.uid();
+  viewer_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  viewer_is_admin boolean := false;
+  payload jsonb;
+begin
+  if viewer_uid is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+
+  select exists (
+    select 1
+    from Administrator a
+    where a.auth_user_id = viewer_uid
+      or lower(a.email) = viewer_email
+  ) into viewer_is_admin;
+
+  if not viewer_is_admin then
+    raise exception 'Only administrators can view policy debate setup.' using errcode = '42501';
+  end if;
+
+  if p_debate_id is null then
+    raise exception 'Debate ID is required.' using errcode = '23502';
+  end if;
+
+  select jsonb_build_object(
+    'debate', to_jsonb(d),
+    'student_assignments', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'student_id', sp.student_id,
+          'team_number', sp.team_number,
+          'debate_stance', sp.debate_stance,
+          'worldview', sp.worldview,
+          'speaking_order', sp.speaking_order,
+          'is_captain', sp.is_captain
+        )
+        order by sp.team_number asc, coalesce(sp.speaking_order, 999) asc, sp.student_id
+      )
+      from S_Participation sp
+      where sp.debate_id = d.debate_id
+    ), '[]'::jsonb),
+    'judge_assignments', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'judge_id', jp.judge_id,
+          'panel_number', jp.panel_number
+        )
+        order by jp.panel_number asc, jp.judge_id
+      )
+      from J_Participation jp
+      where jp.debate_id = d.debate_id
+    ), '[]'::jsonb),
+    'coach_assignments', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'coach_id', cp.coach_id,
+          'mentored_team_number', cp.mentored_team_number,
+          'notes', cp.notes
+        )
+        order by cp.mentored_team_number asc, cp.coach_id
+      )
+      from C_Participation cp
+      where cp.debate_id = d.debate_id
+    ), '[]'::jsonb)
+  )
+  into payload
+  from Debate d
+  where d.debate_id = p_debate_id;
+
+  if payload is null then
+    raise exception 'Debate not found.' using errcode = '23503';
+  end if;
+
+  return payload;
+end;
+$$;
+
+grant execute on function public.get_policy_debate_setup(uuid) to authenticated;
+
 -- Admins can view judge consistency analytics; judges cannot self-view these stats.
 create or replace function public.get_judge_bias_stats(
   target_judge_id uuid,

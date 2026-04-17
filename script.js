@@ -3630,112 +3630,31 @@ async function handlePolicySetupPage() {
 
     async function populateForEdit(debateId) {
         setMessage(messageEl, "Loading debate for editing...", false);
+        const setupResponse = await supabaseClient.rpc("get_policy_debate_setup", {
+            p_debate_id: debateId
+        });
 
-        async function loadStudentAssignmentsForEdit() {
-            const directResponse = await supabaseClient
-                .from(TABLES.studentParticipation)
-                .select("student_id, team_number, debate_stance, worldview, speaking_order, is_captain")
-                .eq("debate_id", debateId);
-
-            if (!directResponse.error && Array.isArray(directResponse.data) && directResponse.data.length) {
-                return directResponse.data;
+        if (setupResponse.error) {
+            const isMissingFn = /function .*get_policy_debate_setup.*does not exist|Could not find the function/i.test(setupResponse.error.message || "");
+            if (isMissingFn) {
+                setMessage(messageEl, "Debate setup reader is not deployed yet. Run the latest SQL in build.sql and reload.", true);
+                return;
             }
-
-            if (!students.length) {
-                return [];
-            }
-
-            const parseRoleContext = (roleContext) => {
-                const text = String(roleContext || "").trim();
-                const match = text.match(/Team\s+(\d+)\s+•\s+([^|]+)/i);
-                if (!match) {
-                    return {
-                        teamNumber: null,
-                        debateStance: null
-                    };
-                }
-
-                const parsedTeamNumber = Number.parseInt(match[1], 10);
-                const rawStance = sanitizeText(match[2], 32);
-                const normalizedStance = /negative/i.test(rawStance)
-                    ? "Negative"
-                    : /affirmative/i.test(rawStance)
-                        ? "Affirmative"
-                        : null;
-
-                return {
-                    teamNumber: Number.isFinite(parsedTeamNumber) ? parsedTeamNumber : null,
-                    debateStance: normalizedStance
-                };
-            };
-
-            const historyResults = await Promise.allSettled(
-                students.map((student) => supabaseClient.rpc("get_user_debate_history", {
-                    target_account_type: "student",
-                    target_account_id: student.student_id
-                }))
-            );
-
-            const assignments = historyResults.flatMap((result, index) => {
-                if (result.status !== "fulfilled" || result.value?.error) {
-                    return [];
-                }
-
-                const matchingRecord = (result.value.data || []).find((record) => String(record.debate_id || "") === debateId);
-                if (!matchingRecord) {
-                    return [];
-                }
-
-                const parsed = parseRoleContext(matchingRecord.role_context);
-                return [{
-                    student_id: students[index].student_id,
-                    team_number: parsed.teamNumber,
-                    debate_stance: parsed.debateStance,
-                    worldview: "Moderate",
-                    speaking_order: null,
-                    is_captain: false
-                }];
-            });
-
-            if (assignments.length === 2) {
-                const distinctTeams = new Set(assignments.map((item) => item.team_number).filter((value) => value != null));
-                if (distinctTeams.size < 2) {
-                    assignments[0].team_number = 1;
-                    assignments[1].team_number = 2;
-                }
-
-                const normalizedStances = assignments.map((item) => String(item.debate_stance || "").toLowerCase());
-                if (!normalizedStances.includes("affirmative") || !normalizedStances.includes("negative")) {
-                    assignments[0].debate_stance = "Affirmative";
-                    assignments[1].debate_stance = "Negative";
-                }
-            }
-
-            return assignments.map((item) => ({
-                ...item,
-                team_number: toPositiveInt(item.team_number || 1, 1),
-                debate_stance: item.debate_stance || "Affirmative",
-                worldview: item.worldview || "Moderate"
-            }));
+            setMessage(messageEl, `Could not load debate for editing: ${setupResponse.error.message}`, true);
+            return;
         }
 
-        const studentAssignments = await loadStudentAssignmentsForEdit();
-        const [debateRes, jpRes, cpRes] = await Promise.all([
-            supabaseClient.from(TABLES.debate)
-                .select("debate_id, debate_date, debate_time, topic, room, status, team_a_name, team_b_name, tournament_id, tournament_round_id")
-                .eq("debate_id", debateId).single(),
-            supabaseClient.from(TABLES.judgeParticipation)
-                .select("judge_id, panel_number")
-                .eq("debate_id", debateId),
-            supabaseClient.from(TABLES.coachParticipation)
-                .select("coach_id, mentored_team_number, notes")
-                .eq("debate_id", debateId)
-        ]);
-        if (debateRes.error || !debateRes.data) {
+        const setupPayload = getRpcSingleRow(setupResponse);
+        const debate = setupPayload?.debate || null;
+        const studentAssignments = Array.isArray(setupPayload?.student_assignments) ? setupPayload.student_assignments : [];
+        const judgeAssignments = Array.isArray(setupPayload?.judge_assignments) ? setupPayload.judge_assignments : [];
+        const coachAssignments = Array.isArray(setupPayload?.coach_assignments) ? setupPayload.coach_assignments : [];
+
+        if (!debate) {
             setMessage(messageEl, "Could not load debate for editing.", true);
             return;
         }
-        const debate = debateRes.data;
+
         const headingEl = document.querySelector(".debates-header h2");
         const copyEl = document.querySelector(".debates-header .section-copy");
         const submitBtn = form?.querySelector('button[type="submit"]');
@@ -3779,9 +3698,9 @@ async function handlePolicySetupPage() {
             }
         }
 
-        if (jpRes.data?.length) {
+        if (judgeAssignments.length) {
             judgeRowsRoot.replaceChildren();
-            for (const jp of jpRes.data) {
+            for (const jp of judgeAssignments) {
                 addJudgeRow();
                 const row = judgeRowsRoot.lastElementChild;
                 if (row && jp.judge_id) {
@@ -3791,9 +3710,9 @@ async function handlePolicySetupPage() {
             }
         }
 
-        if (cpRes.data?.length) {
+        if (coachAssignments.length) {
             coachRowsRoot.replaceChildren();
-            for (const cp of cpRes.data) {
+            for (const cp of coachAssignments) {
                 addCoachRow();
                 const row = coachRowsRoot.lastElementChild;
                 if (!row) { continue; }
